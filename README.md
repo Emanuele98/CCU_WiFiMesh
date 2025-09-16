@@ -11,8 +11,6 @@ This repository contains the source code for performance testing of a WiFi mesh 
 | **Reception (RX)** | 13.18 Mbps, 1170.3 pps, 11708 packets, 16484864 bytes |
 | **Round Trip Time (RTT)** | avg=3.11 ms, min=1.60 ms, max=15.60 ms (samples=5375) |
 | **Packet Loss** | 0 packets dropped |
-| **Layer** | Layer 1 |
-| **Connection Status** | Connected: YES |
 
 ## Summary
 
