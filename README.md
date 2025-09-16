@@ -1,0 +1,2 @@
+# Bumblebee WiFi Mesh
+This is the main repository for the Bumblebee WiFi Mesh project, which aims to create a robust and scalable mesh network using ESP32 devices. The project leverages the ESP-IDF framework and various components to facilitate communication between nodes in the mesh network.
