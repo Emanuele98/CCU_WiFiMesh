@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <sys/queue.h>
 #include <sys/time.h>
 #include "esp_log.h"
 

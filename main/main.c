@@ -7,8 +7,8 @@ void app_main(void)
 
     wifi_mesh_init();
 
-    //todo: local mesh formation
-    //todo: master on any node (peer s-link structure)
+    //local mesh formation done!
+    //todo: master on any node (peer s-link structure) - make 2 lists
     //todo: localization
     //todo: sensor monitoring
 
