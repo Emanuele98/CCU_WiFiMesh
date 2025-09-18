@@ -1,63 +1,26 @@
 #include "peer.h"
 
-
 static const char *TAG = "PEER";
 
-static SLIST_HEAD(, peer) peers;
+static SLIST_HEAD(, RX_peer) RX_peers;
+static SLIST_HEAD(, TX_peer) TX_peers;
 
-//Whether at least one TX unit is already connected
-extern bool connected_pads;
-
-struct peer * peer_find_by_id(uint8_t id)
+void peer_init()
 {
-    struct peer *p;
-
-    SLIST_FOREACH(p, &peers, next) {
-        if (p->id == id) {
-            return p;
-        }
-    }
-
-    return NULL;
+    SLIST_INIT(&RX_peers);
+    SLIST_INIT(&TX_peers);
 }
 
-struct peer * peer_find_by_mac(uint8_t *mac)
+uint8_t TX_peer_add(uint8_t *mac)
 {
-    struct peer *p;
-
-    SLIST_FOREACH(p, &peers, next) {
-        if (memcmp(p->mac, mac, 6) == 0) {
-            return p;
-        }
-    }
-
-    return NULL;
-}
-
-struct peer * peer_find_by_position(int8_t position)
-{
-    struct peer *p;
-
-    SLIST_FOREACH(p, &peers, next) {
-        if ((p->position == position) && (p->type == SCOOTER))
-            return p;
-    }
-
-    return NULL;
-
-}
-
-
-uint8_t peer_add(uint8_t id, uint8_t *mac)
-{
-    struct peer *p;
+    struct TX_peer *p;
 
     /*Make sure the peer does not exist in the memory pool yet*/
-    p = peer_find_by_id(id);
+    p = TX_peer_find_by_mac(mac);
     if (p) 
     {
         ESP_LOGE(TAG, "Peer already exists in the memory pool");
-        return 1;
+        return ESP_FAIL;
     }
 
     /*Allocate memory for the peer*/
@@ -65,62 +28,141 @@ uint8_t peer_add(uint8_t id, uint8_t *mac)
     if (!p) 
     {
         ESP_LOGE(TAG, "Failed to allocate memory for peer");
-        return 1;
+        return ESP_FAIL;
     }
 
     /* Set everything to 0 */
     memset(p, 0, sizeof * p);
 
-    p->id = id;
-    memcpy(p->mac, mac, 6);
-    if (id <= NUMBER_TX) //if peer is a TX UNIT
-    {
-        p->position = id;
-        connected_pads = true;
-        p->type = PAD;
-    }
-    else        //if peer is a RX UNIT
-    {
-        p->position = 0;
-        p->type = SCOOTER;
-    }
-    
-    SLIST_INSERT_HEAD(&peers, p, next);
+    /* Initialize peer parameters */
+    memcpy(p->MACaddress, mac, 6);
+    p->tx_status = TX_DISCONNECTED;
+    p->led_command = LED_CONNECTED;
+    p->position = -1; //not assigned yet
 
-    return 0;
+    /* Add the peer to the list */
+    SLIST_INSERT_HEAD(&TX_peers, p, next);
+
+    return ESP_OK;
 }
 
-void peer_init(uint8_t max_peers)
+uint8_t RX_peer_add(uint8_t *mac)
 {
-    SLIST_INIT(&peers);
-    connected_pads = false;
+    struct RX_peer *p;
 
-    //register free memory function at the end of the program
-    atexit(delete_all_peers);
+    /*Make sure the peer does not exist in the memory pool yet*/
+    p = RX_peer_find_by_mac(mac);
+    if (p) 
+    {
+        ESP_LOGE(TAG, "Peer already exists in the memory pool");
+        return ESP_FAIL;
+    }
+
+    /*Allocate memory for the peer*/
+    p = malloc(sizeof * p);
+    if (!p) 
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for peer");
+        return ESP_FAIL;
+    }
+
+    /* Set everything to 0 */
+    memset(p, 0, sizeof * p);
+
+    /* Initialize peer parameters */
+    memcpy(p->MACaddress, mac, 6);
+    p->RX_status = RX_DISCONNECTED;
+    p->position = -1; //not assigned yet
+
+    /* Add the peer to the list */
+    SLIST_INSERT_HEAD(&RX_peers, p, next);
+
+    return ESP_OK;
 }
 
-void peer_delete(uint8_t id)
+struct TX_peer* TX_peer_find_by_mac(uint8_t *mac)
 {
-    struct peer *p = peer_find_by_id(id);
-    if(p == NULL)
+    struct TX_peer *p;
+
+    SLIST_FOREACH(p, &TX_peers, next) {
+        if (memcmp(p->MACaddress, mac, 6) == 0) {
+            return p;
+        }
+    }
+
+    return NULL;
+}
+
+struct RX_peer* RX_peer_find_by_mac(uint8_t *mac)
+{
+    struct RX_peer *p;
+
+    SLIST_FOREACH(p, &RX_peers, next) {
+        if (memcmp(p->MACaddress, mac, 6) == 0) {
+            return p;
+        }
+    }
+
+    return NULL;
+}
+
+struct TX_peer* TX_peer_find_by_position(uint8_t position)
+{
+    struct TX_peer *p;
+
+    SLIST_FOREACH(p, &TX_peers, next) {
+        if (p->position == position)
+            return p;
+    }
+
+    return NULL;
+}
+
+struct RX_peer* RX_peer_find_by_position(int8_t position)
+{
+    struct RX_peer *p;
+
+    SLIST_FOREACH(p, &RX_peers, next) {
+        if (p->position == position)
+            return p;
+    }
+
+    return NULL;
+}
+
+void peer_delete(uint8_t *mac)
+{
+    struct TX_peer *TX_p = TX_peer_find_by_mac(mac);
+    if(TX_p != NULL)
     {
-        ESP_LOGE(TAG, "Peer cannot be deleted - not found");
+        SLIST_REMOVE(&TX_peers, TX_p, TX_peer, next);
+        free(TX_p);
         return;
     }
 
-    //remove it from the list of saved peers
-    SLIST_REMOVE(&peers, p, peer, next);
-    free(p);
+    struct RX_peer *RX_p = RX_peer_find_by_mac(mac);
+    if(RX_p != NULL)
+    {
+        SLIST_REMOVE(&RX_peers, RX_p, RX_peer, next);
+        free(RX_p);
+        return;
+    }
 }
 
 void delete_all_peers(void)
 {
-    struct peer *p;
+    struct TX_peer *TX_p;
+    struct RX_peer *RX_p;
 
-    while (!SLIST_EMPTY(&peers)) {
-        p = SLIST_FIRST(&peers);
-        SLIST_REMOVE_HEAD(&peers, next);
-        free(p);
+    while (!SLIST_EMPTY(&TX_peers)) {
+        TX_p = SLIST_FIRST(&TX_peers);
+        SLIST_REMOVE_HEAD(&TX_peers, next);
+        free(TX_p);
+    }
+
+    while (!SLIST_EMPTY(&RX_peers)) {
+        RX_p = SLIST_FIRST(&RX_peers);
+        SLIST_REMOVE_HEAD(&RX_peers, next);
+        free(RX_p);
     }
 }
-

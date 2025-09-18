@@ -88,6 +88,9 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
                     MAC2STR(((mesh_event_root_address_t *)event_data)->addr));
             // Store root address for later use
             memcpy(&root_addr.addr, ((mesh_event_root_address_t *)event_data)->addr, 6);
+            if (esp_mesh_is_root()) {
+                peer_init();
+            }
             break;
 
         case MESH_EVENT_TODS_STATE:

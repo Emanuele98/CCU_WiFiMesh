@@ -80,7 +80,7 @@ menu "Example Configuration"
     config MESH_AP_CONNECTIONS
         int "Mesh AP Connections"
         range 1 10
-        default 6
+        default 10
         help
             The number of mesh stations allowed to connect in.
 

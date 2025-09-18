@@ -1,49 +1,59 @@
 #ifndef PEER_H
 #define PEER_H
 
-#include <stdint.h>
-#include <string.h>
-#include <sys/queue.h>
-#include <sys/time.h>
-#include "esp_log.h"
+#include "util.h"
 
-#define NUMBER_TX 4
-#define NUMBER_RX 4
-#define RSSI_LIMIT -80
+#define RSSI_LIMIT -80 // minimum RSSI before disconnection (RX left scenario)
 
-typedef enum 
-{
-    PAD,
-    SCOOTER
+typedef enum {
+    TX,        //TX UNIT
+    RX         //RX UNIT
 } peer_type;
+typedef enum {
+    TX_DISCONNECTED,       //when the pad is not connected
+    TX_CONNECTED,          //when the pad is connected 
+    TX_LOW_POWER,          //when the pad is on low power mode
+    TX_FULL_POWER,         //when the pad is on full power mode
+    TX_FULLY_CHARGED,      //when the pad is off but a fully charged scooter is still present on it
+    TX_ALERT               //when the pad sent an alert (overcurrent, overvoltage, overtemperature, FOD)
+} TX_status;
 
 typedef enum {
-    PAD_DISCONNECTED,       //when the pad is not connected
-    PAD_CONNECTED,          //when the pad is connected 
-    PAD_LOW_POWER,          //when the pad is on low power mode
-    PAD_FULL_POWER,         //when the pad is on full power mode
-    PAD_FULLY_CHARGED,      //when the pad is off but a fully charged scooter is still present on it
-    PAD_ALERT               //when the pad sent an alert (overcurrent, overvoltage, overtemperature, FOD)
-} pad_status;
-
-typedef enum {
-    SCOOTER_DISCONNECTED,   //when the scooter is not connected
-    SCOOTER_CONNECTED,      //when the scooter is connected but not localized yet
-    SCOOTER_CHARGING,       //when the position is found
-    SCOOTER_MISALIGNED,     //when the scooter is misaligned
-    SCOOTER_FULLY_CHARGED,  //when the scooter is still on the pad but fully charged
-    SCOOTER_ALERT           //when the scooter sent an alert (overcurrent, overvoltage, overtemperature)
-} scooter_status;
+    RX_DISCONNECTED,   //when the scooter is not connected
+    RX_CONNECTED,      //when the scooter is connected but not localized yet
+    RX_CHARGING,       //when the position is found
+    RX_MISALIGNED,     //when the scooter is misaligned
+    RX_FULLY_CHARGED,  //when the scooter is still on the pad but fully charged
+    RX_ALERT           //when the scooter sent an alert (overcurrent, overvoltage, overtemperature)
+} RX_status;
 
 typedef enum {
     LED_OFF,
+    LED_CONNECTED,
     LED_CHARGING,
     LED_MISALIGNED,
     LED_FULLY_CHARGED,
     LED_ALERT,
 } led_command_type;
 
-/** @brief Dynamic characteristic structure. This contains elements necessary for dynamic payload. */
+/**
+ * @brief Static characteristic structure. This contains elements necessary for static payload.
+ * 
+ */
+typedef struct
+{
+    uint8_t          id;
+    peer_type        type;
+    float            OVERVOLTAGE_limit;     /* Overvoltage alert limit */
+    float            OVERCURRENT_limit;     /* Overcurrent alert limit */
+    float            OVERTEMPERATURE_limit; /* Overtemperature alert limit */
+    bool             FOD;                   /* FOD active */
+} wpt_static_payload_t;
+
+/**
+ * @brief Dynamic characteristic structure. This contains elements necessary for dynamic payload.
+ * 
+ */
 typedef struct
 {
     float             voltage;            /**< Voltage value from I2C (4 bytes). */
@@ -55,93 +65,135 @@ typedef struct
     time_t            dyn_time;           /** Time */
 } wpt_dynamic_payload_t;
 
-/**@brief Alert characteristic structure. This contains elements necessary for alert payload. */
-/* The union structure allows to check only 'internal', as it gets positive as soon as at one field of the struct is 1 */
+/**
+ * @brief Alert characteristic structure. This contains elements necessary for alert payload.
+ *        The union structure allows to check only all_flags instead of each alert separately
+ */
 typedef struct
 {
-    bool           overtemperature;    
-    bool           overcurrent;        
-    bool           overvoltage;        
-    bool           F;                      /* FOD for TX, FULLY CHARGED for RX */
+    union {
+        struct {
+            bool       overtemperature;    /* Overtemperature alert */
+            bool       overcurrent;        /* Overcurrent alert     */
+            bool       overvoltage;        /* Overvoltage alert     */
+            bool       F;                  /* FOD for TX, FULLY CHARGED for RX */
+        } internal;
+        uint8_t all_flags;                 /* To check if at least one alert is active */
+    };           
 } wpt_alert_payload_t;
 
-struct peer 
+/**
+ * @brief TX peer structure. This contains elements necessary for TX peer management.
+ * 
+ */
+struct TX_peer 
 {
-    SLIST_ENTRY(peer) next;
+    SLIST_ENTRY(TX_peer) next;
 
-    uint8_t id;
-    peer_type type;
-    uint8_t mac[6];
+    /* POSITION OF THE CHARGING PAD - FIXED */
+    int8_t position; 
 
-    /* STATUS ON/OFF */
-    bool full_power;
+    /* MAC ADDRESS OF THE TX */
+    uint8_t MACaddress[6];
 
-    /* LOCALIZATION STATUS ON/OFF */
-    bool low_power;
+    /* STATUS OF THE CHARGING PAD */
+    TX_status tx_status;
 
-    /* LED STATUS OF THE PAD */
+    /* LED STATUS OF THE CHARGING PAD */
     led_command_type led_command;
 
-    /* POSITION OF THE PAD UPON WHICH THE PEER IS PLACED */
-    int8_t position;
-
     /** Peripheral payloads. */
+    wpt_static_payload_t static_payload;
     wpt_dynamic_payload_t dyn_payload;
-    wpt_alert_payload_t  alert_payload; //not using it here, prob remove it to save memory resources
+    wpt_alert_payload_t  alert_payload;
 };
 
-
-
-
 /**
- * @brief Add a new peer to the peer list
+ * @brief RX peer structure. This contains elements necessary for RX peer management.
  * 
- * @param id ID of the new peer
- * @param mac MAC address of the new peer
- * @return uint8_t Returns 0 on success, 1 if unable to add (list full or duplicate ID)
  */
-uint8_t peer_add(uint8_t id, uint8_t *mac);
+struct RX_peer 
+{
+    SLIST_ENTRY(RX_peer) next;
+
+    /* POSITION OF THE CHARGING PAD UPON WHICH THE RX IS PLACED - VARIABLE */
+    int8_t position;
+
+    /* MAC ADDRESS OF THE RX */
+    uint8_t MACaddress[6];
+
+    /* STATUS OF THE SCOOTER */
+    RX_status RX_status;
+
+    /** Peripheral payloads. */
+    wpt_static_payload_t static_payload;
+    wpt_dynamic_payload_t dyn_payload;
+    wpt_alert_payload_t  alert_payload;
+};
 
 /**
  * @brief Initialize the peer management system
  * 
- * @param max_peers Maximum number of peers to manage
  */
-void peer_init(uint8_t max_peers);
+void peer_init(); //todo call it at master node after root event received
 
 /**
- * @brief Find a peer by its ID
+ * @brief Add a new TX peer to the TX_peers list
  * 
- * @param id ID of the peer to find
- * @return struct peer* 
+ * @param mac MAC address of the new peer
+ * @return uint8_t Returns 0 on success, 1 if unable to add (list full or duplicate ID)
  */
-struct peer * peer_find_by_id(uint8_t id);
+uint8_t TX_peer_add(uint8_t *mac);
 
 /**
- * @brief Find a peer by its MAC address
+ * @brief Add a new RX peer to the RX_peers list
+ * 
+ * @param mac MAC address of the new peer
+ * @return uint8_t Returns 0 on success, 1 if unable to add (list full or duplicate ID)
+ */
+uint8_t RX_peer_add(uint8_t *mac);
+
+/**
+ * @brief Find a TX_peer by its MAC address
  * 
  * @param mac MAC address of the peer to find
- * @return struct peer* 
+ * @return struct TX_peer* 
  */
-struct peer * peer_find_by_mac(uint8_t *mac);
+struct TX_peer* TX_peer_find_by_mac(uint8_t *mac);
 
 /**
- * @brief Find a scooter by its position
+ * @brief Find a RX_peer by its MAC address
+ * 
+ * @param mac MAC address of the peer to find
+ * @return struct RX_peer* 
+ */
+struct RX_peer* RX_peer_find_by_mac(uint8_t *mac);
+
+/**
+ * @brief Find a TX_peer by its position
+ * 
+ * @param id ID of the peer to find
+ * @return struct TX_peer* 
+ */
+struct TX_peer* TX_peer_find_by_position(uint8_t position);
+
+/**
+ * @brief Find a RX_peer by its position
+ * @return struct RX_peer*
 */
-struct peer * peer_find_by_position(int8_t position);
+struct RX_peer* RX_peer_find_by_position(int8_t position);
 
 /**
  * @brief Delete a peer from the peer list
  * 
- * @param id ID of the peer to delete
+ * @param mac MAC address of the peer to delete
  */
-void peer_delete(uint8_t id);
+void peer_delete(uint8_t *mac);
 
 /**
  * @brief Delete all peers from the peer list
  * 
  */
 void delete_all_peers(void);
-
 
 #endif /* PEER_H */
