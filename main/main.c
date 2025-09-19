@@ -1,11 +1,12 @@
 /*
- * SPDX-FileCopyrightText: 2022-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <inttypes.h>
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
@@ -14,11 +15,101 @@
 #include "nvs_flash.h"
 #include <sys/socket.h>
 
-#include "esp_mac.h"
 #include "esp_bridge.h"
 #include "esp_mesh_lite.h"
 
-static const char *TAG = "no_router";
+static int g_sockfd    = -1;
+static const char *TAG = "local_control";
+
+/**
+ * @brief Create a tcp client
+ */
+static int socket_tcp_client_create(const char *ip, uint16_t port)
+{
+    ESP_LOGD(TAG, "Create a tcp client, ip: %s, port: %d", ip, port);
+
+    esp_err_t ret = ESP_OK;
+    int sockfd    = -1;
+    struct ifreq iface;
+    memset(&iface, 0x0, sizeof(iface));
+    struct sockaddr_in server_addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(port),
+        .sin_addr.s_addr = inet_addr(ip),
+    };
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        ESP_LOGE(TAG, "socket create, sockfd: %d", sockfd);
+        goto ERR_EXIT;
+    }
+
+    esp_netif_get_netif_impl_name(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), iface.ifr_name);
+    if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, &iface, sizeof(struct ifreq)) != 0) {
+        ESP_LOGE(TAG, "Bind [sock=%d] to interface %s fail", sockfd, iface.ifr_name);
+    }
+
+    ret = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in));
+    if (ret < 0) {
+        ESP_LOGD(TAG, "socket connect, ret: %d, ip: %s, port: %d", ret, ip, port);
+        goto ERR_EXIT;
+    }
+    return sockfd;
+
+ERR_EXIT:
+
+    if (sockfd != -1) {
+        close(sockfd);
+    }
+
+    return -1;
+}
+
+void tcp_client_write_task(void *arg)
+{
+    size_t size        = 0;
+    int count          = 0;
+    char *data         = NULL;
+    esp_err_t ret      = ESP_OK;
+    uint8_t sta_mac[6] = {0};
+
+    esp_wifi_get_mac(ESP_IF_WIFI_STA, sta_mac);
+
+    ESP_LOGI(TAG, "TCP client write task is running");
+
+    while (1) {
+        if (g_sockfd == -1) {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            g_sockfd = socket_tcp_client_create(CONFIG_SERVER_IP, 10);
+            continue;
+        }
+
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
+
+        size = asprintf(&data, "{\"src_addr\": \"" MACSTR "\",\"data\": \"Hello TCP Server!\",\"level\": %d,\"count\": %d}\r\n",
+                        MAC2STR(sta_mac), esp_mesh_lite_get_level(), count++);
+
+        ESP_LOGD(TAG, "TCP write, size: %d, data: %s", size, data);
+        ret = write(g_sockfd, data, size);
+        free(data);
+
+        if (ret <= 0) {
+            ESP_LOGE(TAG, "<%s> TCP write", strerror(errno));
+            close(g_sockfd);
+            g_sockfd = -1;
+            continue;
+        }
+    }
+
+    ESP_LOGI(TAG, "TCP client write task is exit");
+
+    close(g_sockfd);
+    g_sockfd = -1;
+    if (data) {
+        free(data);
+    }
+    vTaskDelete(NULL);
+}
 
 /**
  * @brief Timed printing system information
@@ -31,9 +122,7 @@ static void print_system_info_timercb(TimerHandle_t timer)
     wifi_second_chan_t second       = 0;
     wifi_sta_list_t wifi_sta_list   = {0x0};
 
-    if (esp_mesh_lite_get_level() > 1) {
-        esp_wifi_sta_get_ap_info(&ap_info);
-    }
+    esp_wifi_sta_get_ap_info(&ap_info);
     esp_wifi_get_mac(ESP_IF_WIFI_STA, sta_mac);
     esp_wifi_ap_get_sta_list(&wifi_sta_list);
     esp_wifi_get_channel(&primary, &second);
@@ -42,19 +131,22 @@ static void print_system_info_timercb(TimerHandle_t timer)
              ", parent rssi: %d, free heap: %"PRIu32"", primary,
              esp_mesh_lite_get_level(), MAC2STR(sta_mac), MAC2STR(ap_info.bssid),
              (ap_info.rssi != 0 ? ap_info.rssi : -120), esp_get_free_heap_size());
-
+#if CONFIG_MESH_LITE_NODE_INFO_REPORT
+    ESP_LOGI(TAG, "All node number: %"PRIu32"", esp_mesh_lite_get_mesh_node_number());
+#endif /* MESH_LITE_NODE_INFO_REPORT */
     for (int i = 0; i < wifi_sta_list.num; i++) {
         ESP_LOGI(TAG, "Child mac: " MACSTR, MAC2STR(wifi_sta_list.sta[i].mac));
     }
+}
 
-    uint32_t size = 0;
-    const node_info_list_t *node = esp_mesh_lite_get_nodes_list(&size);
-    printf("MeshLite nodes %ld:\r\n", size);
-    for (uint32_t loop = 0; (loop < size) && (node != NULL); loop++) {
-        struct in_addr ip_struct;
-        ip_struct.s_addr = node->node->ip_addr;
-        printf("%ld: %d, "MACSTR", %s\r\n" , loop + 1, node->node->level, MAC2STR(node->node->mac_addr), inet_ntoa(ip_struct));
-        node = node->next;
+static void ip_event_sta_got_ip_handler(void *arg, esp_event_base_t event_base,
+                                        int32_t event_id, void *event_data)
+{
+    static bool tcp_task = false;
+
+    if (!tcp_task) {
+        xTaskCreate(tcp_client_write_task, "tcp_client_write_task", 4 * 1024, NULL, 5, NULL);
+        tcp_task = true;
     }
 }
 
@@ -75,18 +167,21 @@ static esp_err_t esp_storage_init(void)
 static void wifi_init(void)
 {
     // Station
-    wifi_config_t wifi_config;
-    memset(&wifi_config, 0x0, sizeof(wifi_config_t));
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = CONFIG_ROUTER_SSID,
+            .password = CONFIG_ROUTER_PASSWORD,
+        },
+    };
     esp_bridge_wifi_set_config(WIFI_IF_STA, &wifi_config);
 
     // Softap
     wifi_config_t wifi_softap_config = {
-                                           .ap = {
-                                                     .ssid = CONFIG_BRIDGE_SOFTAP_SSID,
-                                                     .password = CONFIG_BRIDGE_SOFTAP_PASSWORD,
-                                                     .channel = CONFIG_MESH_CHANNEL,
-                                                 },
-                                       };
+        .ap = {
+            .ssid = CONFIG_BRIDGE_SOFTAP_SSID,
+            .password = CONFIG_BRIDGE_SOFTAP_PASSWORD,
+        },
+    };
     esp_bridge_wifi_set_config(WIFI_IF_AP, &wifi_softap_config);
 }
 
@@ -124,7 +219,9 @@ void app_wifi_set_softap_info(void)
 
 void app_main()
 {
-    // Set the log level for serial port printing.
+    /**
+     * @brief Set the log level for serial port printing.
+     */
     esp_log_level_set("*", ESP_LOG_INFO);
 
     esp_storage_init();
@@ -137,25 +234,16 @@ void app_main()
     wifi_init();
 
     esp_mesh_lite_config_t mesh_lite_config = ESP_MESH_LITE_DEFAULT_INIT();
-    mesh_lite_config.join_mesh_ignore_router_status = true;
-#if CONFIG_MESH_ROOT
-    mesh_lite_config.join_mesh_without_configured_wifi = false;
-#else
-    mesh_lite_config.join_mesh_without_configured_wifi = true;
-#endif
     esp_mesh_lite_init(&mesh_lite_config);
 
     app_wifi_set_softap_info();
 
-#if CONFIG_MESH_ROOT
-    ESP_LOGI(TAG, "Root node");
-    esp_mesh_lite_set_allowed_level(1);
-#else
-    ESP_LOGI(TAG, "Child node");
-    esp_mesh_lite_set_disallowed_level(1);
-#endif
-
     esp_mesh_lite_start();
+
+    /**
+     * @breif Create handler
+     */
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_sta_got_ip_handler, NULL, NULL));
 
     TimerHandle_t timer = xTimerCreate("print_system_info", 10000 / portTICK_PERIOD_MS,
                                        true, NULL, print_system_info_timercb);
