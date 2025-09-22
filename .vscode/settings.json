@@ -20,6 +20,7 @@
   "idf.pythonInstallPath": "C:\\Users\\degan\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
   "files.associations": {
     "esp_mesh_lite.h": "c",
-    "esp_bridge.h": "c"
+    "esp_bridge.h": "c",
+    "*.inc": "c"
   }
 }

@@ -1,19 +1,14 @@
-/* ESP-MESH-LITE Bidirectional Performance Test
-   Using TCP sockets like the mesh_local_control example
+/* ESP-MESH-LITE Performance Test using ESP-NOW Protocol
+   Using the correct esp_mesh_lite_espnow APIs
 */
 
 #include <string.h>
 #include <inttypes.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <lwip/sockets.h>
-#include <lwip/netdb.h>
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
 #include "freertos/event_groups.h"
+#include "freertos/queue.h"
 
 #include "esp_system.h"
 #include "esp_wifi.h"
@@ -23,6 +18,7 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_mac.h"
+#include "esp_now.h"
 
 #include "esp_bridge.h"
 #include "esp_mesh_lite.h"
@@ -32,21 +28,28 @@
  *******************************************************/
 
 // Performance Test Configuration
-#define TCP_SERVER_PORT                 8888
-#define TEST_PAYLOAD_SIZE               1400
+#define TEST_PAYLOAD_SIZE               220    // Safe size: 19 bytes header + 220 = 239 bytes total
 #define STATS_INTERVAL_MS               10000  // 10 seconds
-#define TX_INTERVAL_MS                  1     // Send interval
-#define MAX_CONNECTIONS                 10
+#define TX_INTERVAL_MS                  100    // Increased to 100ms for debugging
+#define TX_BURST_SIZE                   1      // Single packet for debugging
+
+// ESP-NOW data types for mesh-lite
+#define ESPNOW_TYPE_PERF_TEST           0x50   // Custom type for performance test
+
+// Broadcast MAC address
+static const uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 /*******************************************************
  *                Type Definitions
  *******************************************************/
 typedef enum {
-    MSG_TYPE_ECHO_REQUEST = 1,
-    MSG_TYPE_ECHO_REPLY = 2,
-    MSG_TYPE_TEST_DATA = 3,
+    MSG_TYPE_ECHO_REQUEST = 0x01,
+    MSG_TYPE_ECHO_REPLY = 0x02,
+    MSG_TYPE_TEST_DATA = 0x03,
+    MSG_TYPE_DISCOVERY = 0x04,
 } msg_type_t;
 
+// Performance test packet (max 249 bytes after type byte)
 typedef struct {
     uint8_t msg_type;
     uint32_t packet_id;
@@ -56,16 +59,15 @@ typedef struct {
 } __attribute__((packed)) test_packet_t;
 
 typedef struct {
-    int sockfd;
     uint8_t mac[6];
-    char ip[16];
-    bool active;
-} client_info_t;
+    int8_t rssi;
+    uint32_t last_seen;
+} node_info_t;
 
 /*******************************************************
  *                Global Variables
  *******************************************************/
-static const char *TAG = "mesh_lite_perf";
+static const char *TAG = "mesh_espnow_perf";
 
 // Performance measurement variables
 static uint32_t bytes_sent = 0;
@@ -85,13 +87,15 @@ static bool is_mesh_connected = false;
 static bool is_root_node = false;
 static uint8_t self_mac[6] = {0};
 static int mesh_level = -1;
+static bool espnow_initialized = false;
 
-// TCP connections
-static int server_sockfd = -1;
-static int root_sockfd = -1;  // For child nodes to connect to root
-static client_info_t connected_clients[MAX_CONNECTIONS];
-static int num_clients = 0;
-static SemaphoreHandle_t clients_mutex;
+// Node management
+static node_info_t known_nodes[10];
+static int known_nodes_count = 0;
+static SemaphoreHandle_t nodes_mutex;
+
+// Message queue for received packets
+static QueueHandle_t rx_queue;
 
 // Event group
 static EventGroupHandle_t mesh_event_group;
@@ -102,14 +106,14 @@ static EventGroupHandle_t mesh_event_group;
  *                Function Declarations
  *******************************************************/
 static void print_performance_stats(void);
-static int create_tcp_server(uint16_t port);
-static int create_tcp_client(const char *ip, uint16_t port);
-static void tcp_server_task(void *arg);
-static void tcp_client_task(void *arg);
-static void tcp_rx_task(void *arg);
-static void tcp_tx_task(void *arg);
-static void process_packet(test_packet_t *packet, int from_sockfd);
-static esp_err_t send_packet(int sockfd, test_packet_t *packet);
+static esp_err_t espnow_perf_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
+static void tx_task(void *arg);
+static void rx_task(void *arg);
+static void process_packet(test_packet_t *packet, const uint8_t *sender_mac, int8_t rssi);
+static esp_err_t send_packet(const uint8_t *dest_mac, test_packet_t *packet);
+static esp_err_t broadcast_packet(test_packet_t *packet);
+static void discover_nodes_task(void *arg);
+static void add_peer_if_needed(const uint8_t *peer_addr);
 
 /*******************************************************
  *                Function Implementations
@@ -135,7 +139,7 @@ static void print_performance_stats(void)
             max_latency_ms = max_latency_us / 1000.0;
         }
         
-        ESP_LOGI(TAG, "========== PERFORMANCE STATS ==========");
+        ESP_LOGI(TAG, "========== ESP-NOW PERFORMANCE STATS ==========");
         ESP_LOGI(TAG, "Role: %s, Level: %d, MAC: "MACSTR, 
                  is_root_node ? "ROOT" : "NODE", mesh_level, MAC2STR(self_mac));
         ESP_LOGI(TAG, "TX: %.2f Mbps, %.1f pps (%lu packets)", 
@@ -144,12 +148,10 @@ static void print_performance_stats(void)
                  rx_rate_mbps, rx_pps, packets_received);
         ESP_LOGI(TAG, "RTT: avg=%.2f ms, min=%.2f ms, max=%.2f ms (samples=%lu)", 
                  avg_latency_ms, min_latency_ms, max_latency_ms, latency_samples);
-        ESP_LOGI(TAG, "Dropped: %lu packets", packets_dropped);
-        if (is_root_node) {
-            ESP_LOGI(TAG, "Connected clients: %d", num_clients);
-        }
-        ESP_LOGI(TAG, "Free heap: %lu", esp_get_free_heap_size());
-        ESP_LOGI(TAG, "=====================================");
+        ESP_LOGI(TAG, "Dropped: %lu packets, Known nodes: %d", 
+                 packets_dropped, known_nodes_count);
+        ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+        ESP_LOGI(TAG, "==============================================");
     }
     
     // Reset counters
@@ -165,94 +167,92 @@ static void print_performance_stats(void)
     last_stats_time = current_time;
 }
 
-static int create_tcp_server(uint16_t port)
+static void add_peer_if_needed(const uint8_t *peer_addr)
 {
-    int sockfd;
-    struct sockaddr_in server_addr;
-    
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        ESP_LOGE(TAG, "Failed to create socket");
-        return -1;
+    if (peer_addr == NULL || memcmp(peer_addr, BROADCAST_MAC, 6) == 0) {
+        return;
     }
     
-    int opt = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(port);
-    
-    if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        ESP_LOGE(TAG, "Failed to bind socket");
-        close(sockfd);
-        return -1;
+    // Check if peer exists
+    if (!esp_now_is_peer_exist(peer_addr)) {
+        esp_now_peer_info_t peer_info = {0};
+        memcpy(peer_info.peer_addr, peer_addr, 6);
+        peer_info.channel = 0;  // Use current channel
+        // CRITICAL: Use correct interface based on role
+        // Root sends via AP, children send via STA
+        peer_info.ifidx = is_root_node ? ESP_IF_WIFI_AP : ESP_IF_WIFI_STA;
+        peer_info.encrypt = false;
+        
+        esp_err_t ret = esp_now_add_peer(&peer_info);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Added peer: "MACSTR" on %s interface", 
+                    MAC2STR(peer_addr), is_root_node ? "AP" : "STA");
+        } else {
+            ESP_LOGE(TAG, "Failed to add peer "MACSTR": %s", 
+                    MAC2STR(peer_addr), esp_err_to_name(ret));
+        }
     }
-    
-    if (listen(sockfd, MAX_CONNECTIONS) < 0) {
-        ESP_LOGE(TAG, "Failed to listen");
-        close(sockfd);
-        return -1;
-    }
-    
-    ESP_LOGI(TAG, "TCP server listening on port %d", port);
-    return sockfd;
 }
 
-static int create_tcp_client(const char *ip, uint16_t port)
+static esp_err_t espnow_perf_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
-    ESP_LOGD(TAG, "Creating TCP client to %s:%d", ip, port);
+    //ESP_LOGI(TAG, "ESP-NOW received %d bytes from "MACSTR" (RSSI: %d)", 
+    //        len, MAC2STR(recv_info->src_addr), recv_info->rx_ctrl->rssi);
     
-    int sockfd;
-    struct sockaddr_in server_addr;
-    struct ifreq iface;
-    
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        ESP_LOGE(TAG, "Failed to create socket");
-        return -1;
-    }
-    
-    // Bind to STA interface
-    memset(&iface, 0x0, sizeof(iface));
-    esp_netif_get_netif_impl_name(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), iface.ifr_name);
-    if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, &iface, sizeof(struct ifreq)) != 0) {
-        ESP_LOGW(TAG, "Failed to bind socket to interface %s", iface.ifr_name);
-    }
-    
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = inet_addr(ip);
-    
-    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        ESP_LOGD(TAG, "Failed to connect to %s:%d", ip, port);
-        close(sockfd);
-        return -1;
-    }
-    
-    ESP_LOGI(TAG, "Connected to TCP server at %s:%d", ip, port);
-    return sockfd;
-}
-
-static esp_err_t send_packet(int sockfd, test_packet_t *packet)
-{
-    if (sockfd < 0) {
+    if (len != sizeof(test_packet_t)) {
+        ESP_LOGW(TAG, "Invalid packet size: %d (expected %zu)", len, sizeof(test_packet_t));
         return ESP_FAIL;
     }
     
-    int ret = send(sockfd, packet, sizeof(test_packet_t), 0);
-    if (ret != sizeof(test_packet_t)) {
-        ESP_LOGD(TAG, "Send failed: %d", ret);
+    // Add sender as peer if needed
+    add_peer_if_needed(recv_info->src_addr);
+    
+    // Copy packet data and queue for processing
+    typedef struct {
+        test_packet_t packet;
+        uint8_t sender_mac[6];
+        int8_t rssi;
+    } rx_event_t;
+    
+    rx_event_t rx_event;
+    memcpy(&rx_event.packet, data, len);
+    memcpy(rx_event.sender_mac, recv_info->src_addr, 6);
+    rx_event.rssi = recv_info->rx_ctrl->rssi;
+    
+    if (xQueueSend(rx_queue, &rx_event, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "RX queue full, dropping packet");
+        packets_dropped++;
         return ESP_FAIL;
     }
     
+    ESP_LOGD(TAG, "Packet queued for processing");
     return ESP_OK;
 }
 
-static void process_packet(test_packet_t *packet, int from_sockfd)
+static void process_packet(test_packet_t *packet, const uint8_t *sender_mac, int8_t rssi)
 {
     bytes_received += sizeof(test_packet_t);
     packets_received++;
+    
+    // Update node info
+    xSemaphoreTake(nodes_mutex, portMAX_DELAY);
+    bool found = false;
+    for (int i = 0; i < known_nodes_count; i++) {
+        if (memcmp(known_nodes[i].mac, sender_mac, 6) == 0) {
+            known_nodes[i].rssi = rssi;
+            known_nodes[i].last_seen = esp_timer_get_time() / 1000000;
+            found = true;
+            break;
+        }
+    }
+    if (!found && known_nodes_count < 10) {
+        memcpy(known_nodes[known_nodes_count].mac, sender_mac, 6);
+        known_nodes[known_nodes_count].rssi = rssi;
+        known_nodes[known_nodes_count].last_seen = esp_timer_get_time() / 1000000;
+        known_nodes_count++;
+        ESP_LOGI(TAG, "New node: "MACSTR" (RSSI: %d)", MAC2STR(sender_mac), rssi);
+    }
+    xSemaphoreGive(nodes_mutex);
     
     switch (packet->msg_type) {
         case MSG_TYPE_ECHO_REQUEST: {
@@ -262,7 +262,7 @@ static void process_packet(test_packet_t *packet, int from_sockfd)
             reply.msg_type = MSG_TYPE_ECHO_REPLY;
             memcpy(reply.sender_mac, self_mac, 6);
             
-            if (send_packet(from_sockfd, &reply) == ESP_OK) {
+            if (send_packet(sender_mac, &reply) == ESP_OK) {
                 bytes_sent += sizeof(reply);
                 packets_sent++;
             } else {
@@ -286,239 +286,197 @@ static void process_packet(test_packet_t *packet, int from_sockfd)
                 if (round_trip_time > max_latency_us) {
                     max_latency_us = round_trip_time;
                 }
+                
+                ESP_LOGD(TAG, "RTT from "MACSTR": %.2f ms (RSSI: %d)", 
+                        MAC2STR(sender_mac), round_trip_time / 1000.0, rssi);
             }
+            break;
+        }
+        
+        case MSG_TYPE_DISCOVERY: {
+            ESP_LOGI(TAG, "Discovery from "MACSTR" (RSSI: %d)", 
+                    MAC2STR(sender_mac), rssi);
             break;
         }
         
         default:
+            ESP_LOGW(TAG, "Unknown message type: 0x%02x", packet->msg_type);
             break;
     }
 }
 
-static void tcp_server_task(void *arg)
+static esp_err_t send_packet(const uint8_t *dest_mac, test_packet_t *packet)
 {
-    struct sockaddr_in client_addr;
-    socklen_t client_len = sizeof(client_addr);
-    
-    ESP_LOGI(TAG, "TCP server task started");
-    
-    server_sockfd = create_tcp_server(TCP_SERVER_PORT);
-    if (server_sockfd < 0) {
-        ESP_LOGE(TAG, "Failed to create TCP server");
-        vTaskDelete(NULL);
-        return;
+    if (!espnow_initialized) {
+        ESP_LOGE(TAG, "ESP-NOW not initialized!");
+        return ESP_ERR_INVALID_STATE;
     }
     
-    while (1) {
-        int client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_addr, &client_len);
-        if (client_sockfd < 0) {
-            ESP_LOGW(TAG, "Failed to accept connection");
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
-        
-        ESP_LOGI(TAG, "New client connected from %s", inet_ntoa(client_addr.sin_addr));
-        
-        // Add to clients list
-        xSemaphoreTake(clients_mutex, portMAX_DELAY);
-        if (num_clients < MAX_CONNECTIONS) {
-            connected_clients[num_clients].sockfd = client_sockfd;
-            strcpy(connected_clients[num_clients].ip, inet_ntoa(client_addr.sin_addr));
-            connected_clients[num_clients].active = true;
-            num_clients++;
-        } else {
-            ESP_LOGW(TAG, "Max clients reached, closing connection");
-            close(client_sockfd);
-        }
-        xSemaphoreGive(clients_mutex);
-    }
-    
-    close(server_sockfd);
-    vTaskDelete(NULL);
-}
-
-static void tcp_client_task(void *arg)
-{
-    ESP_LOGI(TAG, "TCP client task started");
-    
-    // Wait for IP
-    xEventGroupWaitBits(mesh_event_group, GOT_IP_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(2000));  // Wait for network to stabilize
-    
-    while (1) {
-        if (!is_root_node && root_sockfd < 0) {
-            // For ESP-MESH-LITE, we need to discover the root IP
-            // Method 1: Try to get parent AP's gateway (usually the root in mesh-lite)
-            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-            esp_netif_ip_info_t ip_info;
-            char root_ip[16];
+    // For broadcast, we need to add the broadcast address as a peer with correct interface
+    if (dest_mac == NULL || memcmp(dest_mac, BROADCAST_MAC, 6) == 0) {
+        // Add broadcast peer if not exists
+        if (!esp_now_is_peer_exist(BROADCAST_MAC)) {
+            esp_now_peer_info_t peer_info = {0};
+            memcpy(peer_info.peer_addr, BROADCAST_MAC, 6);
+            peer_info.channel = 0;
+            // Use AP interface for root, STA for children
+            peer_info.ifidx = is_root_node ? ESP_IF_WIFI_AP : ESP_IF_WIFI_STA;
+            peer_info.encrypt = false;
             
-            if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-                // Try the gateway IP first (likely the parent node)
-                inet_ntoa_r(ip_info.gw, root_ip, sizeof(root_ip));
-                ESP_LOGI(TAG, "Trying to connect to gateway/parent at %s", root_ip);
-                
-                root_sockfd = create_tcp_client(root_ip, TCP_SERVER_PORT);
-                
-                if (root_sockfd < 0) {
-                    // If gateway doesn't work, try common AP subnet
-                    // Parent's AP is typically at x.x.x.1
-                    uint32_t ip = ntohl(ip_info.ip.addr);
-                    uint32_t subnet = ip & 0xFFFFFF00;  // Get subnet
-                    uint32_t parent_ip = subnet | 0x00000001;  // x.x.x.1
-                    struct in_addr addr;
-                    addr.s_addr = htonl(parent_ip);
-                    inet_ntoa_r(addr, root_ip, sizeof(root_ip));
-                    
-                    ESP_LOGI(TAG, "Trying parent AP at %s", root_ip);
-                    root_sockfd = create_tcp_client(root_ip, TCP_SERVER_PORT);
-                }
-                
-                if (root_sockfd >= 0) {
-                    ESP_LOGI(TAG, "Connected to parent/root at %s", root_ip);
-                }
+            esp_err_t add_ret = esp_now_add_peer(&peer_info);
+            if (add_ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to add broadcast peer: %s", esp_err_to_name(add_ret));
+                return add_ret;
+            }
+            ESP_LOGI(TAG, "Added broadcast peer on %s interface", 
+                    is_root_node ? "AP" : "STA");
+        }
+        dest_mac = BROADCAST_MAC;
+    } else {
+        // Add unicast peer if needed
+        add_peer_if_needed(dest_mac);
+    }
+    
+    // Use esp_mesh_lite_espnow_send with our custom type
+    esp_err_t ret = esp_mesh_lite_espnow_send(ESPNOW_TYPE_PERF_TEST, 
+                                               (uint8_t *)dest_mac, 
+                                               (uint8_t *)packet, 
+                                               sizeof(test_packet_t));
+    
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Send failed to "MACSTR": %s (interface: %s)", 
+                MAC2STR(dest_mac), esp_err_to_name(ret),
+                is_root_node ? "AP" : "STA");
+    } else {
+        ESP_LOGD(TAG, "Sent packet %lu to "MACSTR, packet->packet_id, MAC2STR(dest_mac));
+    }
+    
+    return ret;
+}
+
+static esp_err_t broadcast_packet(test_packet_t *packet)
+{
+    return send_packet(BROADCAST_MAC, packet);
+}
+
+// New function to send to known mesh nodes
+static esp_err_t send_to_mesh_nodes(test_packet_t *packet)
+{
+    esp_err_t ret = ESP_OK;
+    int sent_count = 0;
+    
+    if (is_root_node) {
+        // Root: Get connected stations and send to each
+        wifi_sta_list_t sta_list = {0};
+        esp_wifi_ap_get_sta_list(&sta_list);
+        
+        ESP_LOGD(TAG, "Root sending to %d connected children", sta_list.num);
+        
+        for (int i = 0; i < sta_list.num; i++) {
+            add_peer_if_needed(sta_list.sta[i].mac);
+            ret = send_packet(sta_list.sta[i].mac, packet);
+            if (ret == ESP_OK) {
+                sent_count++;
+                ESP_LOGD(TAG, "Sent to child "MACSTR, MAC2STR(sta_list.sta[i].mac));
             }
         }
         
-        vTaskDelay(pdMS_TO_TICKS(5000));  // Retry every 5 seconds
+        if (sta_list.num == 0) {
+            ESP_LOGW(TAG, "No children connected, trying broadcast");
+            ret = broadcast_packet(packet);
+        }
+    } else {
+        // Non-root: Send to parent (AP we're connected to)
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK && ap_info.rssi != 0) {
+            add_peer_if_needed(ap_info.bssid);
+            ret = send_packet(ap_info.bssid, packet);
+            if (ret == ESP_OK) {
+                sent_count++;
+                ESP_LOGD(TAG, "Sent to parent "MACSTR, MAC2STR(ap_info.bssid));
+            }
+        } else {
+            ESP_LOGW(TAG, "Not connected to parent, trying broadcast");
+            ret = broadcast_packet(packet);
+        }
     }
     
-    vTaskDelete(NULL);
+    if (sent_count > 0) {
+        ESP_LOGD(TAG, "Successfully sent to %d nodes", sent_count);
+    }
+    
+    return ret;
 }
 
-static void tcp_rx_task(void *arg)
+static void rx_task(void *arg)
 {
-    test_packet_t packet;
-    fd_set read_fds;
-    struct timeval timeout;
-    int max_fd;
+    typedef struct {
+        test_packet_t packet;
+        uint8_t sender_mac[6];
+        int8_t rssi;
+    } rx_event_t;
     
-    ESP_LOGI(TAG, "TCP RX task started");
+    rx_event_t rx_event;
+    
+    ESP_LOGI(TAG, "RX task started");
     
     while (1) {
-        FD_ZERO(&read_fds);
-        max_fd = 0;
-        
-        // Add root connection (for child nodes)
-        if (!is_root_node && root_sockfd >= 0) {
-            FD_SET(root_sockfd, &read_fds);
-            max_fd = root_sockfd;
-        }
-        
-        // Add client connections (for root node)
-        if (is_root_node) {
-            xSemaphoreTake(clients_mutex, portMAX_DELAY);
-            for (int i = 0; i < num_clients; i++) {
-                if (connected_clients[i].active && connected_clients[i].sockfd >= 0) {
-                    FD_SET(connected_clients[i].sockfd, &read_fds);
-                    if (connected_clients[i].sockfd > max_fd) {
-                        max_fd = connected_clients[i].sockfd;
-                    }
-                }
-            }
-            xSemaphoreGive(clients_mutex);
-        }
-        
-        if (max_fd == 0) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
-        
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 100000;  // 100ms timeout
-        
-        int activity = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
-        if (activity <= 0) {
-            continue;
-        }
-        
-        // Check root connection
-        if (!is_root_node && root_sockfd >= 0 && FD_ISSET(root_sockfd, &read_fds)) {
-            int ret = recv(root_sockfd, &packet, sizeof(packet), 0);
-            if (ret == sizeof(packet)) {
-                process_packet(&packet, root_sockfd);
-            } else if (ret <= 0) {
-                ESP_LOGW(TAG, "Lost connection to root");
-                close(root_sockfd);
-                root_sockfd = -1;
-            }
-        }
-        
-        // Check client connections
-        if (is_root_node) {
-            xSemaphoreTake(clients_mutex, portMAX_DELAY);
-            for (int i = 0; i < num_clients; i++) {
-                if (connected_clients[i].active && connected_clients[i].sockfd >= 0 &&
-                    FD_ISSET(connected_clients[i].sockfd, &read_fds)) {
-                    
-                    int ret = recv(connected_clients[i].sockfd, &packet, sizeof(packet), 0);
-                    if (ret == sizeof(packet)) {
-                        process_packet(&packet, connected_clients[i].sockfd);
-                    } else if (ret <= 0) {
-                        ESP_LOGW(TAG, "Client disconnected: %s", connected_clients[i].ip);
-                        close(connected_clients[i].sockfd);
-                        connected_clients[i].active = false;
-                        
-                        // Remove from list
-                        for (int j = i; j < num_clients - 1; j++) {
-                            connected_clients[j] = connected_clients[j + 1];
-                        }
-                        num_clients--;
-                        i--;
-                    }
-                }
-            }
-            xSemaphoreGive(clients_mutex);
+        if (xQueueReceive(rx_queue, &rx_event, portMAX_DELAY) == pdTRUE) {
+            process_packet(&rx_event.packet, rx_event.sender_mac, rx_event.rssi);
         }
     }
     
     vTaskDelete(NULL);
 }
 
-static void tcp_tx_task(void *arg)
+static void tx_task(void *arg)
 {
     test_packet_t packet;
+    esp_err_t ret;
     
-    ESP_LOGI(TAG, "TCP TX task started");
+    ESP_LOGI(TAG, "TX task started");
+    
+    // Wait for mesh to be ready
+    xEventGroupWaitBits(mesh_event_group, MESH_CONNECTED_BIT | GOT_IP_BIT,
+                        pdFALSE, pdTRUE, portMAX_DELAY);
     
     // Initialize packet
+    memset(&packet, 0, sizeof(packet));
     memset(packet.payload, 0xAA, sizeof(packet.payload));
     memcpy(packet.sender_mac, self_mac, 6);
     
     // Initialize stats timer
     last_stats_time = esp_timer_get_time();
     
-    // Wait for connections
-    vTaskDelay(pdMS_TO_TICKS(3000));
+    // Wait for network to stabilize and peers to connect
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    
+    ESP_LOGI(TAG, "Starting performance test, packet size: %d bytes", sizeof(test_packet_t));
     
     while (1) {
-        // Prepare echo request
-        packet.msg_type = MSG_TYPE_ECHO_REQUEST;
-        packet.packet_id = ++packet_id_counter;
-        packet.timestamp = esp_timer_get_time();
+        if (!is_mesh_connected || !espnow_initialized) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
         
-        if (is_root_node) {
-            // Send to all clients
-            xSemaphoreTake(clients_mutex, portMAX_DELAY);
-            for (int i = 0; i < num_clients; i++) {
-                if (connected_clients[i].active && connected_clients[i].sockfd >= 0) {
-                    if (send_packet(connected_clients[i].sockfd, &packet) == ESP_OK) {
-                        bytes_sent += sizeof(packet);
-                        packets_sent++;
-                    } else {
-                        packets_dropped++;
-                    }
-                }
-            }
-            xSemaphoreGive(clients_mutex);
-        } else {
-            // Send to root
-            if (root_sockfd >= 0) {
-                if (send_packet(root_sockfd, &packet) == ESP_OK) {
-                    bytes_sent += sizeof(packet);
-                    packets_sent++;
-                } else {
-                    packets_dropped++;
+        // Send burst of packets
+        for (int burst = 0; burst < TX_BURST_SIZE; burst++) {
+            // Prepare echo request
+            packet.msg_type = MSG_TYPE_ECHO_REQUEST;
+            packet.packet_id = ++packet_id_counter;
+            packet.timestamp = esp_timer_get_time();
+            
+            // Send to mesh nodes (not broadcast)
+            ret = send_to_mesh_nodes(&packet);
+            
+            if (ret == ESP_OK) {
+                bytes_sent += sizeof(packet);
+                packets_sent++;
+            } else {
+                packets_dropped++;
+                if (ret == ESP_ERR_ESPNOW_NO_MEM) {
+                    // Queue full, stop burst
+                    break;
                 }
             }
         }
@@ -529,7 +487,39 @@ static void tcp_tx_task(void *arg)
             print_performance_stats();
         }
         
-        vTaskDelay(TX_INTERVAL_MS);
+        vTaskDelay(pdMS_TO_TICKS(TX_INTERVAL_MS));
+    }
+    
+    vTaskDelete(NULL);
+}
+
+static void discover_nodes_task(void *arg)
+{
+    test_packet_t discovery_packet = {0};
+    discovery_packet.msg_type = MSG_TYPE_DISCOVERY;
+    memcpy(discovery_packet.sender_mac, self_mac, 6);
+    
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(10000));  // Every 10 seconds for debugging
+        
+        if (is_mesh_connected && espnow_initialized) {
+            discovery_packet.packet_id++;
+            discovery_packet.timestamp = esp_timer_get_time();
+            
+            // Use mesh-aware sending instead of broadcast
+            send_to_mesh_nodes(&discovery_packet);
+            ESP_LOGI(TAG, "Sent discovery to mesh nodes");
+            
+            // Print known nodes
+            xSemaphoreTake(nodes_mutex, portMAX_DELAY);
+            ESP_LOGI(TAG, "Known nodes: %d", known_nodes_count);
+            for (int i = 0; i < known_nodes_count && i < 5; i++) {
+                ESP_LOGI(TAG, "  Node[%d]: "MACSTR" (RSSI: %d, Last: %lus ago)", 
+                        i, MAC2STR(known_nodes[i].mac), known_nodes[i].rssi,
+                        (uint32_t)(esp_timer_get_time() / 1000000 - known_nodes[i].last_seen));
+            }
+            xSemaphoreGive(nodes_mutex);
+        }
     }
     
     vTaskDelete(NULL);
@@ -546,32 +536,35 @@ static void print_system_info_timercb(TimerHandle_t timer)
     esp_wifi_ap_get_sta_list(&wifi_sta_list);
     esp_wifi_get_channel(&primary, &second);
     
-    ESP_LOGI(TAG, "System: channel=%d, layer=%d, parent="MACSTR", rssi=%d, free_heap=%lu",
+    ESP_LOGI(TAG, "System: ch=%d, layer=%d, parent="MACSTR", rssi=%d",
              primary, esp_mesh_lite_get_level(), MAC2STR(ap_info.bssid),
-             ap_info.rssi, esp_get_free_heap_size());
+             ap_info.rssi);
     
 #if CONFIG_MESH_LITE_NODE_INFO_REPORT
-    ESP_LOGI(TAG, "Total nodes: %lu", esp_mesh_lite_get_mesh_node_number());
+    ESP_LOGI(TAG, "Mesh nodes: %lu", esp_mesh_lite_get_mesh_node_number());
 #endif
     
-    for (int i = 0; i < wifi_sta_list.num; i++) {
-        ESP_LOGI(TAG, "Child[%d]: "MACSTR, i, MAC2STR(wifi_sta_list.sta[i].mac));
+    if (wifi_sta_list.num > 0) {
+        ESP_LOGI(TAG, "Children: %d", wifi_sta_list.num);
     }
 }
 
-static void ip_event_sta_got_ip_handler(void *arg, esp_event_base_t event_base,
-                                        int32_t event_id, void *event_data)
+static void ip_event_handler(void *arg, esp_event_base_t event_base,
+                             int32_t event_id, void *event_data)
 {
-    ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-    ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
-    
-    mesh_level = esp_mesh_lite_get_level();
-    is_root_node = (mesh_level == 1);
-    is_mesh_connected = true;
-    
-    ESP_LOGI(TAG, "Node type: %s, Level: %d", is_root_node ? "ROOT" : "NODE", mesh_level);
-    
-    xEventGroupSetBits(mesh_event_group, GOT_IP_BIT | MESH_CONNECTED_BIT);
+    if (event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+        ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        
+        mesh_level = esp_mesh_lite_get_level();
+        is_root_node = (mesh_level == 1);
+        is_mesh_connected = true;
+        
+        ESP_LOGI(TAG, "Node type: %s, Level: %d", 
+                 is_root_node ? "ROOT" : "NODE", mesh_level);
+        
+        xEventGroupSetBits(mesh_event_group, GOT_IP_BIT | MESH_CONNECTED_BIT);
+    }
 }
 
 static esp_err_t esp_storage_init(void)
@@ -586,7 +579,7 @@ static esp_err_t esp_storage_init(void)
 
 static void wifi_init(void)
 {
-    // Station config
+    // Station configuration
     wifi_config_t wifi_config = {
         .sta = {
             .ssid = CONFIG_ROUTER_SSID,
@@ -595,12 +588,13 @@ static void wifi_init(void)
     };
     esp_bridge_wifi_set_config(WIFI_IF_STA, &wifi_config);
     
-    // SoftAP config
+    // SoftAP configuration
     wifi_config_t softap_config = {
         .ap = {
             .ssid = CONFIG_BRIDGE_SOFTAP_SSID,
             .password = CONFIG_BRIDGE_SOFTAP_PASSWORD,
             .max_connection = 10,
+            .channel = 6,
         },
     };
     esp_bridge_wifi_set_config(WIFI_IF_AP, &softap_config);
@@ -612,7 +606,6 @@ void app_wifi_set_softap_info(void)
     uint8_t softap_mac[6];
     esp_wifi_get_mac(WIFI_IF_AP, softap_mac);
     
-    // Create unique SSID with MAC
     snprintf(softap_ssid, sizeof(softap_ssid), "%s_%02X%02X", 
              CONFIG_BRIDGE_SOFTAP_SSID, softap_mac[4], softap_mac[5]);
     
@@ -621,7 +614,7 @@ void app_wifi_set_softap_info(void)
 
 void app_main(void)
 {
-    esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("*", ESP_LOG_MAX);
     
     // Initialize storage
     esp_storage_init();
@@ -636,8 +629,11 @@ void app_main(void)
     // Initialize WiFi
     wifi_init();
     
-    // Initialize mesh-lite
+    // Initialize ESP-MESH-LITE
     esp_mesh_lite_config_t mesh_lite_config = ESP_MESH_LITE_DEFAULT_INIT();
+    mesh_lite_config.join_mesh_ignore_router_status = false;  // Set true for no-router
+    mesh_lite_config.join_mesh_without_configured_wifi = false;
+    
     esp_mesh_lite_init(&mesh_lite_config);
     
     // Set SoftAP info
@@ -649,25 +645,58 @@ void app_main(void)
     
     // Create synchronization primitives
     mesh_event_group = xEventGroupCreate();
-    clients_mutex = xSemaphoreCreateMutex();
+    nodes_mutex = xSemaphoreCreateMutex();
+    
+    // Create larger queue for high throughput testing
+    rx_queue = xQueueCreate(50, sizeof(struct {
+        test_packet_t packet;
+        uint8_t sender_mac[6];
+        int8_t rssi;
+    }));
     
     // Register event handlers
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                                        &ip_event_sta_got_ip_handler, NULL, NULL));
+                                                        &ip_event_handler, NULL, NULL));
     
     // Start mesh
     esp_mesh_lite_start();
     
-    // Start performance test tasks
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
-    xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
-    xTaskCreate(tcp_rx_task, "tcp_rx", 4096, NULL, 8, NULL);
-    xTaskCreate(tcp_tx_task, "tcp_tx", 4096, NULL, 5, NULL);
+    // Wait a bit for mesh to initialize
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    
+    // Initialize ESP-NOW through mesh-lite
+    espnow_initialized = true;
+    ESP_LOGI(TAG, "ESP-NOW initialized successfully");
+    
+    // Register our custom ESP-NOW receive callback for performance test type
+    esp_err_t espnow_ret = esp_mesh_lite_espnow_recv_cb_register(ESPNOW_TYPE_PERF_TEST, 
+                                                        espnow_perf_recv_cb);
+    if (espnow_ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register ESP-NOW callback: %s", esp_err_to_name(espnow_ret));
+        return;
+    }
+    ESP_LOGI(TAG, "ESP-NOW callback registered for type 0x%02x", ESPNOW_TYPE_PERF_TEST);
+    
+    // Check packet size
+    if (sizeof(test_packet_t) > ESPNOW_PAYLOAD_MAX_LEN - 1) {
+        ESP_LOGE(TAG, "Packet size %zu exceeds ESP-NOW max %d!", 
+                sizeof(test_packet_t), ESPNOW_PAYLOAD_MAX_LEN - 1);
+        return;
+    }
+    
+    // Create tasks
+    xTaskCreate(rx_task, "rx_task", 4096, NULL, 7, NULL);  // High priority
+    xTaskCreate(tx_task, "tx_task", 4096, NULL, 5, NULL);
+    xTaskCreate(discover_nodes_task, "discover", 4096, NULL, 3, NULL);
     
     // Start system info timer
-    TimerHandle_t timer = xTimerCreate("print_system_info", 30000 / portTICK_PERIOD_MS,
+    TimerHandle_t timer = xTimerCreate("sys_info", 30000 / portTICK_PERIOD_MS,
                                        pdTRUE, NULL, print_system_info_timercb);
     xTimerStart(timer, 0);
     
-    ESP_LOGI(TAG, "ESP-MESH-LITE Performance Test Started");
+    ESP_LOGI(TAG, "ESP-MESH-LITE ESP-NOW Performance Test Started");
+    ESP_LOGI(TAG, "Packet size: %zu bytes (max: %d)", 
+             sizeof(test_packet_t), ESPNOW_PAYLOAD_MAX_LEN - 1);
+    ESP_LOGI(TAG, "TX interval: %d ms, Burst: %d packets", 
+             TX_INTERVAL_MS, TX_BURST_SIZE);
 }
