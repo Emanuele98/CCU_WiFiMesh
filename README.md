@@ -16,9 +16,11 @@ This repository contains the source code for performance testing of a WiFi mesh 
 
 ## Summary
 
-ESPNOW reduces the overhead of WiFi-Mesh. However the throughput is very limited (enough for sensor data ). The latency is very low and stable.
+ESPNOW reduces the processing overhead of WiFi-Mesh by using a connectionless protocol (no handshake, no ACKs, no automatic retransmissions, no keep-alive packets, etc.). However, ESP-NOW does not use WiFi 6 features like OFDMA and MU-MIMO. ESP-NOW uses WiFi 4 (802.11.b/g/n) for compatibility with previous ESP32 devices which supports only WiFi 4 protocol. 
+This explains the higher latency compared to WiFi-Mesh which uses WiFi 6 features.
+to be noted that the throughput is very limited as this protocol was designed for just small sensor data.
 
 - **Total Throughput**: 0.04 Mbps (bidirectional)
 - **Average Latency**: 7.29 ms
-- **Packet Loss Rate**: 0% (0/11706 packets)
+- **Packet Loss Rate**: 0%
 - **Connection Stability**: Stable connection maintained
