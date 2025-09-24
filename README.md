@@ -20,5 +20,5 @@ TCP/IP adds more overhead compared to WiFi Mesh which works at the MAC layer. Th
 
 - **Total Throughput**: 5.57 Mbps (bidirectional)
 - **Average Latency**: 6.82 ms
-- **Packet Loss Rate**: 0% (0/11706 packets)
+- **Packet Loss Rate**: 0%
 - **Connection Stability**: Stable connection maintained
