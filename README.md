@@ -14,6 +14,11 @@ This repository contains the source code for performance testing of a WiFi mesh 
 
 ## Summary
 
+WiFi Mesh Network Performance Test Results are highlighting a a very low latency boosted by WiFi 6 capabilities of the ESP32-C6 devices. The network demonstrated robust performance with no packet loss and stable throughput in both transmission and reception. 
+The throughput is far from the theoretical maximum of WiFi 6 (ESP32-C6) due to the limitations of the microcontroller and the overhead introduced by the mesh networking protocol. The processing powerer of the MCU was found to be the bottleneck in this setup, limiting the achievable throughput.
+
+To be noted: occasional spikes in RTT were observed, which could be attributed to environmental factors or temporary interference, or just due to the high throughput stressing the capabilities of the microcontroller. Occasional RTT spikes reached up to 50-80 ms.
+
 - **Total Throughput**: 13.18 Mbps (bidirectional)
 - **Average Latency**: 3.11 ms
 - **Packet Loss Rate**: 0% (0/11706 packets)
