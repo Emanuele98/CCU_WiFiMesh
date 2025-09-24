@@ -3,16 +3,32 @@
 
 #include <string.h>
 #include <inttypes.h>
-#include "esp_wifi.h"
-#include "esp_mac.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "esp_mesh.h"
-#include "esp_mesh_internal.h"
 #include "nvs_flash.h"
+#include <sys/queue.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/timers.h"
+#include "freertos/event_groups.h"
+
+#include "esp_system.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_log.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
+#include "esp_netif.h"
+#include "esp_mac.h"
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <lwip/sockets.h>
+#include <lwip/netdb.h>
+
+#include "esp_bridge.h"
+#include "esp_mesh_lite.h"
+
 
 #define UNIT_ROLE CONFIG_UNIT_ROLE //TODO USE THIS TO DISTINGUISH BETWEEN TX AND RX UNIT
 
