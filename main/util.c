@@ -5,7 +5,7 @@ static const char *TAG = "UTIL";
 time_t now;
 
 time_t reconnection_time = 0;
-time_t timePeer[CONFIG_MESH_ROUTE_TABLE_SIZE] = {0};
+time_t timePeer[MESH_LITE_MAXIMUM_NODE_NUMBER] = {0};
 nvs_handle_t my_handle;
 
 SemaphoreHandle_t i2c_sem;
@@ -23,7 +23,7 @@ void init_NVS(void)
             time(&now);
             time(&reconnection_time);
 
-            for (uint8_t i = 0; i < CONFIG_MESH_ROUTE_TABLE_SIZE; i++)
+            for (uint8_t i = 0; i < MESH_LITE_MAXIMUM_NODE_NUMBER; i++)
             {
                 char peer_name[5];
                 sprintf(peer_name, "%d", i+1);

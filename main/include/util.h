@@ -83,7 +83,7 @@ extern time_t now;
 
 // Reconnection time variable
 extern time_t reconnection_time;
-extern time_t timePeer[CONFIG_MESH_ROUTE_TABLE_SIZE];
+extern time_t timePeer[MESH_LITE_MAXIMUM_NODE_NUMBER];
 extern nvs_handle_t my_handle;
 
 /**

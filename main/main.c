@@ -3,8 +3,25 @@
 
 static const char *TAG = "MAIN";
 
+void print_firmware_version(void)
+{
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  %s", app_desc->project_name);
+    ESP_LOGI(TAG, "  Firmware Version: v%d.%d.%d", 
+             CONFIG_FW_VERSION_MAJOR, 
+             CONFIG_FW_VERSION_MINOR, 
+             CONFIG_FW_VERSION_PATCH);
+    ESP_LOGI(TAG, "  Build Date: %s %s", app_desc->date, app_desc->time);
+    ESP_LOGI(TAG, "  ESP-IDF: %s", app_desc->idf_ver);
+    ESP_LOGI(TAG, "========================================");
+}
+
 void app_main(void)
 {
+    print_firmware_version();
+
     esp_log_level_set("*", ESP_LOG_INFO);
 
     /* Initialize NVS */
