@@ -9,6 +9,12 @@ typedef enum {
     TX,        //TX UNIT
     RX         //RX UNIT
 } peer_type;
+
+#if CONFIG_TX_UNIT
+    #define UNIT_ROLE TX
+#else // CONFIG_RX_UNIT
+    #define UNIT_ROLE RX
+#endif
 typedef enum {
     TX_DISCONNECTED,       //when the pad is not connected
     TX_CONNECTED,          //when the pad is connected 
@@ -44,6 +50,7 @@ typedef struct
 {
     uint8_t          id;
     peer_type        type;
+    uint8_t          macAddr[ETH_HWADDR_LEN]; /**< MAC Address of peer */
     float            OVERVOLTAGE_limit;     /* Overvoltage alert limit */
     float            OVERCURRENT_limit;     /* Overcurrent alert limit */
     float            OVERTEMPERATURE_limit; /* Overtemperature alert limit */
@@ -56,6 +63,7 @@ typedef struct
  */
 typedef struct
 {
+    uint8_t           macAddr[ETH_HWADDR_LEN]; /**< MAC Address of peer */
     float             voltage;            /**< Voltage value from I2C (4 bytes). */
     float             current;            /**< Current Irect value from I2C (4 bytes). */
     float             temp1;              /**< Temperature value from I2C (4 bytes). */
@@ -71,6 +79,7 @@ typedef struct
  */
 typedef struct
 {
+    uint8_t            macAddr[ETH_HWADDR_LEN]; /**< MAC Address of peer */
     union {
         struct {
             bool       overtemperature;    /* Overtemperature alert */
@@ -135,7 +144,7 @@ struct RX_peer
  * @brief Initialize the peer management system
  * 
  */
-void peer_init(); //todo call it at master node after root event received
+void peer_init();
 
 /**
  * @brief Add a new TX peer to the TX_peers list

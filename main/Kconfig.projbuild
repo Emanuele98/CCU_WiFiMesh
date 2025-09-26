@@ -1,24 +1,5 @@
 menu "Example Configuration"
 
-    choice
-        bool "Unit Role Topology"
-        default TX_UNIT
-        help
-            Unit Role Topology.
-
-        config TX_UNIT
-            bool "TX_UNIT"
-        config RX_UNIT
-            bool "RX_UNIT"
-    endchoice
-
-    config UNIT_ROLE
-        int
-        default 0 if TX_UNIT
-        default 1 if RX_UNIT
-        help
-            Unit Role Tolopogy.
-
     config MESH_ROUTER_SSID
         string "Router SSID"
         default "ROUTER_SSID"

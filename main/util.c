@@ -10,6 +10,21 @@ nvs_handle_t my_handle;
 
 SemaphoreHandle_t i2c_sem;
 
+//* Global Alerts variables
+#if CONFIG_TX_UNIT
+    float OVER_CURRENT = OVERCURRENT_TX;
+    float OVER_TEMPERATURE = OVERTEMPERATURE_TX;
+    float OVER_VOLTAGE = OVERVOLTAGE_TX;
+    bool FOD = FOD_ACTIVE;
+    bool FULLY_CHARGED = false;
+#else
+    float OVER_CURRENT = OVERCURRENT_RX;
+    float OVER_TEMPERATURE = OVERTEMPERATURE_RX;
+    float OVER_VOLTAGE = OVERVOLTAGE_RX;
+    bool FOD = FOD_ACTIVE;
+    bool FULLY_CHARGED = false;
+#endif
+
 void init_NVS(void)
 {
     //NVS reading

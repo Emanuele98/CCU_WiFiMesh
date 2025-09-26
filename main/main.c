@@ -42,12 +42,12 @@ void app_main(void)
     wifi_mesh_init();
 
     //local mesh formation done!
-    //todo: master on any node (peer s-link structure) - make 2 lists
-    /* Init peers */
-    //peer_init();
+    //master on any node (peer s-link structure) - make 2 lists
+    //static payload done
 
 
     //todo: localization
+    
     //todo: sensor monitoring
 
     //todo later: mqtt + aws management

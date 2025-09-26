@@ -1,6 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include "unitID.h"
+
 #include <string.h>
 #include <inttypes.h>
 #include "nvs_flash.h"
@@ -28,9 +30,6 @@
 
 #include "esp_bridge.h"
 #include "esp_mesh_lite.h"
-
-
-#define UNIT_ROLE CONFIG_UNIT_ROLE //TODO USE THIS TO DISTINGUISH BETWEEN TX AND RX UNIT
 
 /* MISALIGNMENT LIMITS */
 #define SCOOTER_LEFT_LIMIT                  10
@@ -74,6 +73,19 @@
 /* FOD_CLEAR_TIMEOUT */
 #define FOD_CLEAR_TIMEOUT                   4000     //2 seconds
 
+/* Mesh message IDs */
+#define TO_ROOT_STATIC_MSG_ID               0x1000
+#define TO_ROOT_STATIC_MSG_ID_RESP          0x1001
+
+#define TO_ROOT_DYNAMIC_MSG_ID              0x1002
+#define TO_CHILD_LOCALIZATION_MSG_ID        0x1003
+
+//* Global Alerts variables
+extern float OVER_CURRENT;
+extern float OVER_TEMPERATURE;
+extern float OVER_VOLTAGE;
+extern bool FOD;
+extern bool FULLY_CHARGED;
 
 /* Semaphore used to protect against I2C reading simultaneously */
 extern SemaphoreHandle_t i2c_sem;
