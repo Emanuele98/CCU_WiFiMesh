@@ -5,8 +5,10 @@
 
 #include <string.h>
 #include <inttypes.h>
+#include <math.h>
 #include "nvs_flash.h"
 #include <sys/queue.h>
+#include <sys/time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

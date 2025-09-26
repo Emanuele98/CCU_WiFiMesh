@@ -5,6 +5,10 @@ static const char *TAG = "PEER";
 static SLIST_HEAD(, RX_peer) RX_peers;
 static SLIST_HEAD(, TX_peer) TX_peers;
 
+wpt_dynamic_payload_t dynamic_payload;
+wpt_alert_payload_t alert_payload;
+wpt_tuning_params_t tuning_params;
+
 void peer_init()
 {
     SLIST_INIT(&RX_peers);

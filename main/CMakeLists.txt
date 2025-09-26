@@ -1,4 +1,4 @@
-idf_component_register(SRCS "main.c" "wifiMesh.c" "peer.c" "util.c"
+idf_component_register(SRCS "main.c" "wifiMesh.c" "peer.c" "cru_hw.c" "aux_ctu_hw.c" "led_strip.c" "util.c"
                     INCLUDE_DIRS "." "include")
 
 # Build version string from Kconfig

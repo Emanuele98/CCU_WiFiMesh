@@ -92,6 +92,18 @@ typedef struct
 } wpt_alert_payload_t;
 
 /**
+ * @brief Tuning params structure for TX transitor waveforms
+ * 
+ */
+typedef struct
+{
+    float             duty_cycle;
+    uint8_t           tuning;
+    uint8_t           low_vds_threshold;
+    uint8_t           low_vds;
+} wpt_tuning_params_t;
+
+/**
  * @brief TX peer structure. This contains elements necessary for TX peer management.
  * 
  */
@@ -116,6 +128,10 @@ struct TX_peer
     wpt_dynamic_payload_t dyn_payload;
     wpt_alert_payload_t  alert_payload;
 };
+
+extern wpt_dynamic_payload_t dynamic_payload;
+extern wpt_alert_payload_t alert_payload;
+extern wpt_tuning_params_t tuning_params;
 
 /**
  * @brief RX peer structure. This contains elements necessary for RX peer management.

@@ -8,4 +8,8 @@
 //* ID of the unit (make sure it's unique in the network)
 #define CONFIG_UNIT_ID      1 
 
+
+// todo later: Unit role automatically detected (I2C scan?)
+// todo later: unit ID saved into NVS - can be changed manually
+
 #endif /* UNIT_ID_H */

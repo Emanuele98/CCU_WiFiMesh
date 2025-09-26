@@ -1,5 +1,10 @@
 #include "wifiMesh.h"
 #include "peer.h"
+#if CONFIG_TX_UNIT
+    #include "aux_ctu_hw.h"
+#else
+    #include "cru_hw.h"
+#endif
 
 static const char *TAG = "MAIN";
 
@@ -36,7 +41,11 @@ void app_main(void)
     init_NVS();
 
     /* Initialize Hardware */
-    //todo - detect tx or rx and get readings
+    #if CONFIG_TX_UNIT
+        TX_init_hw();
+    #else
+        RX_init_hw();
+    #endif
 
     /* Initialize WiFi Mesh */
     wifi_mesh_init();
@@ -46,8 +55,8 @@ void app_main(void)
     //static payload done
 
 
-    //todo: localization
-    
+    //todo: localization - add espnow
+
     //todo: sensor monitoring
 
     //todo later: mqtt + aws management
