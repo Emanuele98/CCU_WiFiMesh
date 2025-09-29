@@ -41,11 +41,13 @@ void app_main(void)
     init_NVS();
 
     /* Initialize Hardware */
+    /*
     #if CONFIG_TX_UNIT
         TX_init_hw();
     #else
         RX_init_hw();
     #endif
+    */
 
     /* Initialize WiFi Mesh */
     wifi_mesh_init();

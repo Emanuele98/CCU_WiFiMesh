@@ -11,45 +11,122 @@ static bool is_root_node = false;
 static uint8_t self_mac[ETH_HWADDR_LEN] = {0};
 static int mesh_level = -1;
 
+#define MAX_PAYLOAD_SIZE                1400  // Safe size for mesh messages
+
+// Performance metrics
+static uint32_t tx_bytes = 0;
+static uint32_t rx_bytes = 0;
+static uint32_t tx_packets = 0;
+static uint32_t rx_packets = 0;
+static uint32_t tx_errors = 0;
+static int64_t total_latency_us = 0;
+static uint32_t latency_samples = 0;
+static int64_t min_latency_us = INT64_MAX;
+static int64_t max_latency_us = 0;
+static int64_t last_stats_time = 0;
+static uint32_t packet_id_counter = 0;
+
+typedef struct {
+    uint32_t packet_id;
+    int64_t timestamp_us;
+    uint8_t sender_mac[6];
+    uint16_t payload_size;
+    uint8_t test_type;  // 0=latency, 1=throughput
+    uint8_t payload[MAX_PAYLOAD_SIZE];
+} __attribute__((packed)) perf_test_packet_t;
+
+static void print_performance_stats(void)
+{
+    int64_t current_time = esp_timer_get_time();
+    int64_t time_diff_ms = (current_time - last_stats_time) / 1000;
+    
+    if (time_diff_ms <= 0) return;
+    
+    float tx_rate_kbps = (tx_bytes * 8.0) / time_diff_ms;  // Kbps
+    float rx_rate_kbps = (rx_bytes * 8.0) / time_diff_ms;  // Kbps
+    float tx_pps = (tx_packets * 1000.0) / time_diff_ms;
+    float rx_pps = (rx_packets * 1000.0) / time_diff_ms;
+    
+    float avg_latency_ms = 0;
+    float min_latency_ms = 0;
+    float max_latency_ms = 0;
+    if (latency_samples > 0) {
+        avg_latency_ms = (total_latency_us / latency_samples) / 1000.0;
+        min_latency_ms = min_latency_us / 1000.0;
+        max_latency_ms = max_latency_us / 1000.0;
+    }
+    
+    ESP_LOGI(TAG, "========== MESH PERFORMANCE STATS ==========");
+    ESP_LOGI(TAG, "Role: %s | Level: %d | MAC: "MACSTR, 
+             is_root_node ? "ROOT" : "CHILD", mesh_level, MAC2STR(self_mac));
+    ESP_LOGI(TAG, "TX: %.2f Kbps | %.1f pps | %lu packets | %lu errors", 
+             tx_rate_kbps, tx_pps, tx_packets, tx_errors);
+    ESP_LOGI(TAG, "RX: %.2f Kbps | %.1f pps | %lu packets", 
+             rx_rate_kbps, rx_pps, rx_packets);
+    
+    if (latency_samples > 0) {
+        ESP_LOGI(TAG, "RTT: avg=%.2f ms | min=%.2f ms | max=%.2f ms | samples=%lu", 
+                 avg_latency_ms, min_latency_ms, max_latency_ms, latency_samples);
+    }
+    
+    ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "===========================================");
+    
+    // Reset counters
+    tx_bytes = 0;
+    rx_bytes = 0;
+    tx_packets = 0;
+    rx_packets = 0;
+    tx_errors = 0;
+    total_latency_us = 0;
+    latency_samples = 0;
+    min_latency_us = INT64_MAX;
+    max_latency_us = 0;
+    last_stats_time = current_time;
+}
+
+
 /*******************************************************
  *                Function Definitions
  *******************************************************/
 
 // process response to static message - inside child
-static esp_err_t raw_msg_process_response(uint8_t *data, uint32_t len, 
+static esp_err_t static_to_child_process_raw_msg__response(uint8_t *data, uint32_t len, 
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
     //set static payload
-    ESP_LOGE( TAG, "Process message for root RESPONSE!");   
+    //ESP_LOGI( TAG, "Process message for root RESPONSE!");   
 
-    // Process the received data
-    if (len != sizeof(wpt_static_payload_t)) {
-        ESP_LOGW(TAG, "Received unexpected message size: %d", len);
-        printf(" Expected: %d\n", sizeof(wpt_static_payload_t));
-        printf("Data: ");
-        for (int i = 0; i < len; i++) {
-            printf("%02X ", data[i]);
-        }
-        printf("\n");
+    if (len < sizeof(perf_test_packet_t)) {
+        ESP_LOGW(TAG, "Invalid latency response size: %lu", len);
         return ESP_FAIL;
     }
-
-    wpt_static_payload_t *received_payload = (wpt_static_payload_t *)data;
-    ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
-             received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
-    ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
-             received_payload->OVERVOLTAGE_limit,
-             received_payload->OVERCURRENT_limit,
-             received_payload->OVERTEMPERATURE_limit,
-             received_payload->FOD ? "true" : "false");
-
-    //* Set Local Alerts
-    OVER_CURRENT = received_payload->OVERCURRENT_limit;
-    OVER_VOLTAGE = received_payload->OVERVOLTAGE_limit;
-    OVER_TEMPERATURE = received_payload->OVERTEMPERATURE_limit;
-    FOD = received_payload->FOD;
-
+    
+    perf_test_packet_t *resp = (perf_test_packet_t *)data;
+    rx_bytes += len;
+    rx_packets++;
+    
+    // Calculate RTT
+    int64_t current_time = esp_timer_get_time();
+    int64_t rtt_us = current_time - resp->timestamp_us;
+    
+    if (rtt_us > 0 && rtt_us < 10000000) {  // Sanity check: < 10 seconds
+        total_latency_us += rtt_us;
+        latency_samples++;
+        
+        if (rtt_us < min_latency_us) {
+            min_latency_us = rtt_us;
+        }
+        if (rtt_us > max_latency_us) {
+            max_latency_us = rtt_us;
+        }
+        
+        //ESP_LOGI(TAG, "CHILD: RTT for packet %lu: %.2f ms", resp->packet_id, rtt_us / 1000.0);
+    } else {
+        ESP_LOGW(TAG, "CHILD: Invalid RTT for packet %lu: %lld us", resp->packet_id, rtt_us);
+    }
+    
     return ESP_OK;
 }
 
@@ -58,119 +135,109 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    *out_len = sizeof(wpt_static_payload_t);
-    *out_data = malloc(*out_len);
-    wpt_static_payload_t static_payload = {
-                    .id = CONFIG_UNIT_ID,
-                    .type = UNIT_ROLE, 
-                    .OVERVOLTAGE_limit = OVERVOLTAGE_TX,
-                    .OVERCURRENT_limit = OVERCURRENT_TX,
-                    .OVERTEMPERATURE_limit = OVERTEMPERATURE_TX,
-                    .FOD = FOD_ACTIVE
-                };
-    memcpy(static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
-    memcpy(*out_data, (uint8_t*)&static_payload, *out_len); // set here alerts
-
-    ESP_LOGE( TAG, "Process message for root");   
+    //ESP_LOGI(TAG, "ROOT: latency_test_request_handler called! len=%lu, seq=%lu", len, seq);
     
-    // Process the received data
-    if (len != sizeof(wpt_static_payload_t)) {
-        ESP_LOGW(TAG, "Received unexpected message size: %d", len);
-        printf(" Expected: %d\n", sizeof(wpt_static_payload_t));
-        printf("Data: ");
-        for (int i = 0; i < len; i++) {
-            printf("%02X ", data[i]);
-        }
-        printf("\n");
+    if (len < sizeof(perf_test_packet_t)) {
+        ESP_LOGW(TAG, "Invalid latency request size: %lu (expected %d)", len, sizeof(perf_test_packet_t));
         return ESP_FAIL;
     }
-
-    wpt_static_payload_t *received_payload = (wpt_static_payload_t *)data;
-    ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
-             received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
-    ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
-             received_payload->OVERVOLTAGE_limit,
-             received_payload->OVERCURRENT_limit,
-             received_payload->OVERTEMPERATURE_limit,
-             received_payload->FOD ? "true" : "false");
-
-    //* Add peer strucutre
-    if (received_payload->type == TX)
-    {
-        ESP_ERROR_CHECK(TX_peer_add(received_payload->macAddr)); 
-        struct TX_peer *p = TX_peer_find_by_mac(received_payload->macAddr);
-        if (p != NULL)
-        {
-            p->static_payload = *received_payload;
-            ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload.id);
-        }
+    
+    perf_test_packet_t *req = (perf_test_packet_t *)data;
+    rx_bytes += len;
+    rx_packets++;
+    
+    ESP_LOGI(TAG, "ROOT: Received latency packet %lu from "MACSTR, 
+             req->packet_id, MAC2STR(req->sender_mac));
+    
+    // Prepare echo response
+    *out_len = len;
+    *out_data = malloc(*out_len);
+    if (*out_data == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate response buffer");
+        return ESP_FAIL;
     }
-    else if (received_payload->type == RX)
-    {
-        ESP_ERROR_CHECK(RX_peer_add(received_payload->macAddr)); 
-        struct RX_peer *p = RX_peer_find_by_mac(received_payload->macAddr);
-        if (p != NULL)
-        {
-            p->static_payload = *received_payload;
-            ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload.id);
-        }
-    }
-
+    
+    memcpy(*out_data, data, len);
+    perf_test_packet_t *resp = (perf_test_packet_t *)*out_data;
+    memcpy(resp->sender_mac, self_mac, 6);
+    
+    tx_bytes += *out_len;
+    tx_packets++;
+    
+    ESP_LOGI(TAG, "ROOT: Sending echo response for packet %lu", req->packet_id);
     return ESP_OK;
 }
 
-// Send message to Root
-static void send_message_to_root(uint8_t *data, size_t data_len) 
+static void send_latency_test_packet(void)
 {
-    ESP_LOGE( TAG, "Sending message to Root");    
+    perf_test_packet_t packet;
+    memset(&packet, 0, sizeof(packet));
+    
+    packet.packet_id = ++packet_id_counter;
+    packet.timestamp_us = esp_timer_get_time();
+    memcpy(packet.sender_mac, self_mac, 6);
+    packet.test_type = 0;  // Latency test
+    packet.payload_size = 64;  // Small payload for latency test
+    memset(packet.payload, 0xAA, packet.payload_size);
+    
+    //ESP_LOGI(TAG, "CHILD: Sending latency test packet %lu", packet.packet_id);
     
     esp_mesh_lite_msg_config_t config = {
         .raw_msg = {
-            .msg_id = TO_ROOT_STATIC_MSG_ID,  // Define your own message ID
-            .expect_resp_msg_id = TO_ROOT_STATIC_MSG_ID_RESP,  // Response ID if needed
+            .msg_id = TO_ROOT_STATIC_MSG_ID,
+            .expect_resp_msg_id = TO_ROOT_STATIC_MSG_ID_RESP,
             .max_retry = 3,
             .retry_interval = 10,
-            .data = data,
-            .size = data_len,
-            .raw_resend = esp_mesh_lite_send_raw_msg_to_root,  // Send raw message to Root
+            .data = (uint8_t *)&packet,
+            .size = sizeof(perf_test_packet_t),
+            .raw_resend = esp_mesh_lite_send_raw_msg_to_root,
         },
     };
     
-    esp_mesh_lite_send_msg(ESP_MESH_LITE_RAW_MSG, &config);
+    esp_err_t ret = esp_mesh_lite_send_msg(ESP_MESH_LITE_RAW_MSG, &config);
+    if (ret == ESP_OK) {
+        tx_bytes += sizeof(packet);
+        tx_packets++;
+        //ESP_LOGI(TAG, "CHILD: Latency packet sent successfully");
+    } else {
+        tx_errors++;
+        ESP_LOGE(TAG, "CHILD: Failed to send latency packet: %s (%d)", esp_err_to_name(ret), ret);
+    }
 }
-
-//* High level sending functions
-static void send_static_payload(void)
-{
-    wpt_static_payload_t static_payload = {
-                    .id = CONFIG_UNIT_ID,
-                    .type = UNIT_ROLE, 
-                    .OVERVOLTAGE_limit = OVERVOLTAGE_TX,
-                    .OVERCURRENT_limit = OVERCURRENT_TX,
-                    .OVERTEMPERATURE_limit = OVERTEMPERATURE_TX,
-                    .FOD = FOD_ACTIVE
-                };
-    memcpy(static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
-    send_message_to_root((uint8_t*)&static_payload, sizeof(static_payload));
-}
-
 
 static void wifi_mesh_lite_task(void *pvParameters)
 {
+       // Initialize stats timer
+    last_stats_time = esp_timer_get_time();
+
     // Initialize peer management
     peer_init();
 
     // Register rcv handlers
     esp_mesh_lite_raw_msg_action_t raw_actions[] = {
         { TO_ROOT_STATIC_MSG_ID, TO_ROOT_STATIC_MSG_ID_RESP, static_to_root_raw_msg_process},
-        { TO_ROOT_STATIC_MSG_ID_RESP, 0, raw_msg_process_response},
+        { TO_ROOT_STATIC_MSG_ID_RESP, 0, static_to_child_process_raw_msg__response},
         {0, 0, NULL}
     };
     esp_mesh_lite_raw_msg_action_list_register(raw_actions);
 
+    TickType_t last_stats_print = xTaskGetTickCount();
+
     while (1) 
     {
-        vTaskDelay(5000 / portTICK_PERIOD_MS); // Delay for 10 seconds
+        now = xTaskGetTickCount();
+        if (!is_root_node && is_mesh_connected)
+        {
+            send_latency_test_packet();
+        }
+
+        // Print stats periodically (both nodes)
+        if ((now - last_stats_print) >= pdMS_TO_TICKS(2000) && is_mesh_connected) {
+            print_performance_stats();
+            last_stats_print = now;
+        }
+
+        vTaskDelay(50); // Delay for 10 seconds
     }
 
     vTaskDelete(NULL);
@@ -221,11 +288,12 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             esp_mesh_lite_node_info_t *node_info = (esp_mesh_lite_node_info_t *)event_data;
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             mesh_level = esp_mesh_lite_get_level();
+            is_mesh_connected = true;
             is_root_node = (mesh_level == 1);
             // if not a root, send static payload to root
-            if (!is_root_node) {
-                send_static_payload();
-            }
+            //if (!is_root_node) {
+            //    send_latency_test_packet();
+            //}
             break;
         case ESP_MESH_LITE_EVENT_NODE_LEAVE:
             ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
@@ -255,10 +323,6 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
         case IP_EVENT_STA_GOT_IP:
             ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
             ESP_LOGI(TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));
-            mesh_level = esp_mesh_lite_get_level();
-            is_root_node = (mesh_level == 1);
-            is_mesh_connected = true;
-            ESP_LOGI(TAG, "Node type: %s, Level: %d", is_root_node ? "ROOT" : "NODE", mesh_level);
             break;
 
         case IP_EVENT_STA_LOST_IP:
