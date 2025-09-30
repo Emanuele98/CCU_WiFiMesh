@@ -3,8 +3,6 @@
 
 #include "util.h"
 
-#define RSSI_LIMIT -80 // minimum RSSI before disconnection (RX left scenario)
-
 typedef enum {
     TX,        //TX UNIT
     RX         //RX UNIT
@@ -111,6 +109,9 @@ struct TX_peer
 {
     SLIST_ENTRY(TX_peer) next;
 
+    /* ID of the peer */
+    int8_t id;
+
     /* POSITION OF THE CHARGING PAD - FIXED */
     int8_t position; 
 
@@ -140,6 +141,9 @@ extern wpt_tuning_params_t tuning_params;
 struct RX_peer 
 {
     SLIST_ENTRY(RX_peer) next;
+
+    /* ID of the peer */
+    int8_t id;
 
     /* POSITION OF THE CHARGING PAD UPON WHICH THE RX IS PLACED - VARIABLE */
     int8_t position;

@@ -11,6 +11,19 @@ static bool is_root_node = false;
 static uint8_t self_mac[ETH_HWADDR_LEN] = {0};
 static int mesh_level = -1;
 
+// ESP-NOW data types for mesh-lite
+#define ESPNOW_MESH_TYPE           0x50
+
+// Send semaphore to avoid concurrent access to RF resources
+static SemaphoreHandle_t send_semaphore = NULL;
+// ESP-NOW messages queue
+static QueueHandle_t espnow_queue;
+// ESP-NOW payload structure
+static espnow_data_t *espnow_data;
+
+// Broadcast MAC address
+static uint8_t broadcast_mac[ETH_HWADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
 /*******************************************************
  *                Function Definitions
  *******************************************************/
@@ -102,6 +115,8 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         if (p != NULL)
         {
             p->static_payload = *received_payload;
+            p->id = received_payload->id;
+            p->position = p->id; // Position same as ID for TX
             ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload.id);
         }
     }
@@ -112,6 +127,8 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         if (p != NULL)
         {
             p->static_payload = *received_payload;
+            p->id = received_payload->id;
+            p->position = 0; // Position unknown (variable) for RX
             ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload.id);
         }
     }
@@ -151,7 +168,401 @@ static void send_static_payload(void)
                     .FOD = FOD_ACTIVE
                 };
     memcpy(static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
-    send_message_to_root((uint8_t*)&static_payload, sizeof(static_payload));
+    send_message_to_root((uint8_t*)&static_payload, sizeof(wpt_static_payload_t));
+}
+
+//*esp-NOW functions
+/* Parse received ESPNOW data. */
+uint8_t espnow_data_crc_control(uint8_t *data, uint16_t data_len)
+{
+    espnow_data_t *buf = (espnow_data_t *)data;
+    uint16_t crc, crc_cal = 0;
+
+    if (data_len < sizeof(espnow_data_t)) {
+        ESP_LOGE(TAG, "Receive ESPNOW data too short, len:%d", data_len); //! problem here!
+        return -1;
+    }
+
+    crc = buf->crc;
+    buf->crc = 0;
+    crc_cal = esp_crc16_le(UINT16_MAX, (uint8_t const *)buf, data_len);
+
+    if (crc_cal == crc) {
+        return 1;
+    }
+
+    return 0;
+}
+
+/* Prepare ESPNOW data to be sent. */
+static void espnow_data_prepare(espnow_data_t *buf, message_type type)
+{
+    // initiliaze buf to 0
+    memset(buf, 0, sizeof(espnow_data_t));
+    // esp NOW data
+    buf->id = CONFIG_UNIT_ID;
+    buf->type = type;
+
+    // save last message type to allow retranmission
+    //last_msg_type = type;
+
+    switch (type)
+    {
+    case DATA_BROADCAST:
+        // nothing else to do
+        break;
+
+        /*
+    case ESPNOW_DATA_LOCALIZATION:
+        // on/off
+        break;
+
+    case ESPNOW_DATA_ALERT:
+        // fill in alerts data
+        buf->field_1 = alert_payload.overtemperature;
+        buf->field_2 = alert_payload.overcurrent;
+        buf->field_3 = alert_payload.overvoltage;
+        buf->field_4 = alert_payload.FOD;
+
+        break;
+
+    case ESPNOW_DATA_DYNAMIC:
+        // fill in dynamic data
+        buf->field_1 = dynamic_payload.voltage;
+        buf->field_2 = dynamic_payload.current;
+        buf->field_3 = dynamic_payload.temp1;
+        buf->field_4 = dynamic_payload.temp2;
+        break;
+
+    case ESPNOW_DATA_CONTROL:
+        // send autotuning values
+        buf->field_1 = tuning_params.duty_cycle;
+        buf->field_2 = tuning_params.tuning;
+        buf->field_3 = tuning_params.low_vds_threshold;
+        buf->field_4 = tuning_params.low_vds;
+        break;
+        */
+    default:
+        ESP_LOGE(TAG, "Message type error: %d", type);
+        break;
+    }
+
+    // CRC
+    buf->crc = esp_crc16_le(UINT16_MAX, (uint8_t const *)buf, sizeof(espnow_data_t));
+}
+
+static void add_peer_if_needed(const uint8_t *peer_addr)
+{
+    if (peer_addr == NULL) {
+        return;
+    }
+    
+    // Check if peer exists
+    if (!esp_now_is_peer_exist(peer_addr)) {
+        esp_now_peer_info_t peer_info = {0};
+        memcpy(peer_info.peer_addr, peer_addr, 6);
+        peer_info.channel = 0;  // Use current channel
+        // CRITICAL: Use correct interface based on role
+        // Root sends via AP, children send via STA
+        peer_info.ifidx = is_root_node ? ESP_IF_WIFI_AP : ESP_IF_WIFI_STA;
+        peer_info.encrypt = false;
+        
+        esp_err_t ret = esp_now_add_peer(&peer_info);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Added peer: "MACSTR" on %s interface", 
+                    MAC2STR(peer_addr), is_root_node ? "AP" : "STA");
+        } else {
+            ESP_LOGE(TAG, "Failed to add peer "MACSTR": %s", 
+                    MAC2STR(peer_addr), esp_err_to_name(ret));
+        }
+    }
+}
+
+/* ESPNOW sending or receiving callback function is called in WiFi task.
+ * Users should not do lengthy operations from this task. Instead, post
+ * necessary data to a queue and handle it from a lower priority task. */
+static void my_espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_status_t status)
+{
+    espnow_event_t evt;
+    espnow_event_send_cb_t *send_cb = &evt.info.send_cb;
+
+    if (tx_info == NULL) {
+        ESP_LOGE(TAG, "Send cb arg error");
+        return;
+    }
+
+    //give back the semaphore if status is successfull
+    if (status == ESP_NOW_SEND_SUCCESS)
+        xSemaphoreGive(send_semaphore);
+
+    evt.id = ID_ESPNOW_SEND_CB;
+    memcpy(send_cb->mac_addr, tx_info->des_addr, ESP_NOW_ETH_ALEN);
+    send_cb->status = status;
+
+    if (xQueueSend(espnow_queue, &evt, pdMS_TO_TICKS(ESPNOW_QUEUE_MAXDELAY)) != pdTRUE) {
+        ESP_LOGW(TAG, "Send send queue fail");
+    }
+}
+
+static esp_err_t my_espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
+{
+    //ESP_LOGI(TAG, "ESP-NOW received %d bytes from "MACSTR" (RSSI: %d)", 
+    //        len, MAC2STR(recv_info->src_addr), recv_info->rx_ctrl->rssi);
+    
+    espnow_event_t evt;
+    espnow_event_recv_cb_t *recv_cb = &evt.info.recv_cb;
+    uint8_t * mac_addr = recv_info->src_addr;
+    //int rssi = recv_info->rx_ctrl->rssi;
+
+    if (mac_addr == NULL || data == NULL || len <= 0) {
+        ESP_LOGE(TAG, "Receive cb arg error");
+        return ESP_FAIL;
+    }
+
+    evt.id = ID_ESPNOW_RECV_CB;
+    memcpy(recv_cb->mac_addr, mac_addr, ESP_NOW_ETH_ALEN);
+    recv_cb->data = malloc(len);
+    if (recv_cb->data == NULL) {
+        ESP_LOGE(TAG, "Malloc receive data fail");
+        return ESP_FAIL;
+    }
+    memcpy(recv_cb->data, data, len);
+    recv_cb->data_len = len;
+
+    if (xQueueSend(espnow_queue, &evt, pdMS_TO_TICKS(ESPNOW_QUEUE_MAXDELAY)) != pdTRUE) {
+        ESP_LOGW(TAG, "Send receive queue fail");
+        free(recv_cb->data);
+    }
+
+    return ESP_OK;
+}
+
+
+static void espnow_task(void *pvParameter)
+{
+    //Create queue to process esp now events
+    espnow_queue = xQueueCreate(ESPNOW_QUEUE_SIZE, sizeof(espnow_event_t));
+    if (espnow_queue == NULL) {
+        ESP_LOGE(TAG, "Create ESP-NOW queue fail");
+        return;
+    }
+    
+    espnow_event_t evt;
+    uint8_t addr_type;
+
+    add_peer_if_needed(broadcast_mac);
+
+    while (xQueueReceive(espnow_queue, &evt, portMAX_DELAY) == pdTRUE) {
+        switch (evt.id) {
+            case ID_ESPNOW_SEND_CB:
+            {
+                espnow_event_send_cb_t *send_cb = &evt.info.send_cb;
+                //ESP_LOGI(TAG, "send data to "MACSTR", status: %d", MAC2STR(send_cb->mac_addr), send_cb->status);
+                addr_type = IS_BROADCAST_ADDR(send_cb->mac_addr);
+                if (addr_type)
+                {
+                    ESP_LOGW(TAG, "Broadcast data sent!");
+                    //broadcast always successfull anyway (no ack)
+                }
+                else
+                {
+                    ESP_LOGW(TAG, "Unicast data sent!");
+
+                    /*
+
+                    struct peer *p = peer_find_by_mac(send_cb->mac_addr);
+                    if (p == NULL)
+                    {
+                        ESP_LOGE(TAG, "Peer not in the list");
+                        break;
+                    }
+                    //unicast message
+                    if (send_cb->status != ESP_NOW_SEND_SUCCESS) 
+                    {
+                        ESP_LOGE(TAG, "ERROR SENDING DATA TO "MACSTR"", MAC2STR(send_cb->mac_addr));
+                        comms_fail++;
+
+                        //MAX_COMMS_CONSECUTIVE_ERRORS --> RESTART
+                        if (comms_fail > MAX_COMMS_ERROR)
+                        {
+                            ESP_LOGE(TAG, "TOO MANY COMMS ERRORS, RESTARTING");
+
+                             //SEND IT TO DEBUG MQTT TOPIC TO KEEP TRACK OF IT
+                            if (MQTT_ACTIVE)
+                            {
+                                char value[50];
+                                sprintf(value, "Send failed - n. %d", comms_fail);
+                                esp_mqtt_client_publish(client, debug, value, 0, MQTT_QoS, 0);
+                            }
+
+                            //delete all peers
+                            delete_all_peers();
+
+                            //reboot
+                            esp_restart();
+                        }
+                        else //RETRANSMISSIONS
+                        {
+                            //retransmit
+                            ESP_LOGW(TAG, "RETRANSMISSION n. %d", comms_fail);
+                            espnow_data_prepare(espnow_data, p->last_msg_type, p->id);
+                            esp_now_send(send_cb->mac_addr, (uint8_t *)espnow_data, sizeof(espnow_data_t));
+                        }
+                    }
+                    else 
+                    {
+                        //reset comms - we are good
+                        comms_fail = 0;
+                    }
+                        */
+                }
+                break;
+            }
+            case ID_ESPNOW_RECV_CB:
+            {
+                espnow_event_recv_cb_t *recv_cb = &evt.info.recv_cb;
+
+                // Check CRC of received ESPNOW data.
+                if(!espnow_data_crc_control(recv_cb->data, recv_cb->data_len))
+                {
+                    ESP_LOGE(TAG, "Receive error data from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
+                    break;
+                }
+                espnow_data_t *recv_data = (espnow_data_t *)recv_cb->data;
+                
+                int8_t unitID = recv_data->id;
+                addr_type = recv_data->type;
+
+                ESP_LOGW(TAG, "Received ESP-NOW message with from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
+
+                /*
+
+                //TODO ADD sender as peer if needed 
+                //add_peer_if_needed(recv_info->src_addr); // puth this into a function (add only when position found)
+
+                // message received - check
+                peer_msg_received[unitID-1] = true;
+
+                if (addr_type == ESPNOW_DATA_BROADCAST) 
+                {
+                    ESP_LOGI(TAG, "Receive broadcast data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+
+                    // If MAC address does not exist in peer list, add it to peer list.
+                    if (esp_now_is_peer_exist(recv_cb->mac_addr) == false) 
+                    {
+                        if (!peer_should_connect(unitID))
+                            break;
+                        
+                        //avoid encryption for the first message (needs to be registered on both sides)
+                        esp_now_register_peer(recv_cb->mac_addr);
+
+                        // save its details into peer structure 
+                        peer_add(unitID, recv_cb->mac_addr);
+                        struct peer *p = peer_find_by_id(unitID);
+                        ESP_LOGW(TAG, "NEW PEER FOUND! ID: %d", unitID);
+
+                        //Send unicast data to make him stop sending broadcast msg
+                        // fill in with remote alerts tresholds
+                        if (xSemaphoreTake(send_semaphore, pdMS_TO_TICKS(ESPNOW_QUEUE_MAXDELAY)) == pdTRUE)
+                        {
+                            espnow_data_prepare(espnow_data, ESPNOW_DATA_CONTROL, unitID);
+                            esp_now_send(recv_cb->mac_addr, (uint8_t *)espnow_data, sizeof(espnow_data_t));
+                        }
+                        else
+                            ESP_LOGE(TAG, "Could not take the send semaphore!");
+
+                        if (p->id > NUMBER_TX)   
+                        {
+                            scooters_status[unitID - NUMBER_TX - 1] = SCOOTER_CONNECTED;
+                            scooters_left[unitID - NUMBER_TX - 1] = false;
+                            free_relative_pad(unitID);
+                        }
+                        else
+                        {
+                            pads_status[unitID - 1] = PAD_CONNECTED;
+                            free_relative_scooter(unitID);
+                        }
+
+                        // send another control message to set the dynamic timer
+                        // pads will start sending dynamic data after this time
+                        // scooters will wait until their position is found
+                        if (xSemaphoreTake(send_semaphore, pdMS_TO_TICKS(ESPNOW_QUEUE_MAXDELAY)) == pdTRUE)
+                        {
+                            espnow_data_prepare(espnow_data, ESPNOW_DATA_CONTROL, unitID);
+                            esp_now_send(recv_cb->mac_addr, (uint8_t *)espnow_data, sizeof(espnow_data_t));
+                        } else
+                            ESP_LOGE(TAG, "Could not take the send semaphore!");
+
+                        // then encrypt for future messages
+                        esp_now_encrypt_peer(recv_cb->mac_addr);
+
+                        //reset dashboard
+                        mqtt_unit_reset(unitID);
+                    }
+                    else   //you receive broadcasts data from a registered peer = PEER RESET --> delete peer so you can restart the connection
+                    {
+                        //need to check multiple broadcasts as they might be sent slighly before register the master
+                        if (n_peer_broadcasts[unitID-1] > MAX_BROADCASTS_BEFORE_RECONNECTION)
+                        { 
+                            //reset its status
+                            if (unitID > NUMBER_TX)
+                                scooters_status[unitID - NUMBER_TX - 1] = SCOOTER_DISCONNECTED;
+                            else
+                                pads_status[unitID - 1] = PAD_DISCONNECTED;
+
+                            //remove peer from the esp now registered list
+                            esp_now_del_peer(recv_cb->mac_addr);
+
+                            //delete peer
+                            peer_delete(unitID);
+                            n_peer_broadcasts[unitID-1] = 0;
+                        }
+                        else
+                            n_peer_broadcasts[unitID-1]++;
+                    }
+
+                }
+                else if(addr_type == ESPNOW_DATA_DYNAMIC)
+                {
+                    ESP_LOGI(TAG, "Receive DYNAMIC data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+
+                    handle_peer_dynamic(recv_data, espnow_data);
+
+                }
+                else if (addr_type == ESPNOW_DATA_ALERT)
+                {
+                    ESP_LOGI(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+
+                    handle_peer_alert(recv_data, espnow_data);
+                }
+                else if (addr_type == ESPNOW_DATA_CONTROL)
+                {
+                    ESP_LOGI(TAG, "Receive CONTROL data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+
+                    // publish tuning params into debug topic
+                    if (MQTT_ACTIVE)
+                    {
+                        char value[100];
+                        sprintf(value, "PAD %d -- duty cycle: %.3f, tuning: %.2f, low_vds_thresh: %.2f, low_vds: %.2f", unitID, recv_data->field_1, recv_data->field_2, recv_data->field_3, recv_data->field_4);
+                        esp_mqtt_client_publish(client, debug, value, 0, MQTT_QoS, 0);
+                    }
+
+                } else
+                    ESP_LOGI(TAG, "Receive unexpected message type %d data from: "MACSTR"", addr_type, MAC2STR(recv_cb->mac_addr));
+                
+                free(recv_data);
+                */
+                break;
+            }
+            default:
+                ESP_LOGE(TAG, "Callback type error: %d", evt.id);
+                break;
+        }
+    }
+
+    vQueueDelete(espnow_queue);
+    vTaskDelete(NULL);
+    free(espnow_data);
 }
 
 
@@ -170,7 +581,37 @@ static void wifi_mesh_lite_task(void *pvParameters)
 
     while (1) 
     {
-        vTaskDelay(5000 / portTICK_PERIOD_MS); // Delay for 10 seconds
+        if (is_mesh_connected)
+        {
+            if (is_root_node)
+            {
+                // take care of sequential switching during localization
+
+            }
+            else
+            {
+                #if CONFIG_TX_UNIT
+                // dynamic payload upon changes
+
+                #else
+                //espnow broadcast when voltage rises + dynamic payload later
+
+                // send broadcast data again
+                if (xSemaphoreTake(send_semaphore, pdMS_TO_TICKS(ESPNOW_QUEUE_MAXDELAY)) == pdTRUE)
+                {
+                    espnow_data_prepare(espnow_data, DATA_BROADCAST);
+                    if (esp_mesh_lite_espnow_send(ESPNOW_DATA_TYPE_RESERVE, broadcast_mac, (const uint8_t *)espnow_data, sizeof(espnow_data_t)) != ESP_OK) {
+                        ESP_LOGE(TAG, "Send error");
+                    }
+                    else
+                        ESP_LOGI(TAG, "message sent here!");
+                }
+                else
+                    ESP_LOGE(TAG, "Could not take send semaphore");
+                #endif
+            } 
+        }
+        vTaskDelay(pdMS_TO_TICKS(5000)); // Delay for 50ms
     }
 
     vTaskDelete(NULL);
@@ -222,8 +663,9 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             mesh_level = esp_mesh_lite_get_level();
             is_root_node = (mesh_level == 1);
+            is_mesh_connected = true;
             // if not a root, send static payload to root
-            if (!is_root_node) {
+            if (!is_root_node) { //todo: add self check? send this upon joining the mesh (or when gets IP?)
                 send_static_payload();
             }
             break;
@@ -254,11 +696,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
     {
         case IP_EVENT_STA_GOT_IP:
             ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
-            ESP_LOGI(TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));
-            mesh_level = esp_mesh_lite_get_level();
-            is_root_node = (mesh_level == 1);
-            is_mesh_connected = true;
-            ESP_LOGI(TAG, "Node type: %s, Level: %d", is_root_node ? "ROOT" : "NODE", mesh_level);
+            ESP_LOGI(TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));            
             break;
 
         case IP_EVENT_STA_LOST_IP:
@@ -294,8 +732,8 @@ static void wifi_init(void)
     // Station config (yes router connection)
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = CONFIG_MESH_ROUTER_SSID,
-            .password = CONFIG_MESH_ROUTER_PASSWD,
+            .ssid = "manu",//CONFIG_MESH_ROUTER_SSID,
+            .password = "cherrycookies",//CONFIG_MESH_ROUTER_PASSWD,
         },
     };
     
@@ -343,8 +781,9 @@ void wifi_mesh_init()
     */
 
     #if CONFIG_RX_UNIT
-        //esp_mesh_lite_set_disallowed_level(1);
-        //esp_mesh_lite_set_disallowed_level(2);
+        esp_mesh_lite_set_disallowed_level(1);
+        //esp_mesh_lite_set_disallowed_level(2); (more than 10 TXs)
+        //esp_mesh_lite_set_disallowed_level(3); (more than 100 TXs)
         esp_mesh_lite_set_leaf_node(true);
     #endif
 
@@ -363,14 +802,37 @@ void wifi_mesh_init()
     
     // Start mesh
     esp_mesh_lite_start();
-    
+
     // Start system info timer (debug)
     TimerHandle_t timer = xTimerCreate("print_system_info", 10000 / portTICK_PERIOD_MS,
                                       pdTRUE, NULL, print_system_info_timercb);
     xTimerStart(timer, 0);
 
     // WiFi Mesh Lite task
-    xTaskCreate(wifi_mesh_lite_task, "wifi_mesh_lite_task", 10000, NULL, 5, NULL);
+    ESP_ERROR_CHECK(xTaskCreate(wifi_mesh_lite_task, "wifi_mesh_lite_task", 10000, NULL, 6, NULL));
+
+    //* ESP-NOW
+    // Initialize ESP-NOW through mesh-lite //max payload ESPNOW_PAYLOAD_MAX_LEN
+    // Register receive callback through mesh-lite function
+    ESP_ERROR_CHECK(esp_mesh_lite_espnow_recv_cb_register(ESPNOW_DATA_TYPE_RESERVE, my_espnow_recv_cb));
+
+    // Register send callback
+    ESP_ERROR_CHECK(esp_now_register_send_cb(my_espnow_send_cb));
+
+    espnow_data = malloc(sizeof(espnow_data_t));
+    if (espnow_data == NULL) {
+        ESP_LOGE(TAG, "Malloc send buffer fail");
+        return;
+    }
+
+    ESP_ERROR_CHECK(xTaskCreate(espnow_task, "espnow_task", 4096, NULL, 6, NULL));
+
+    send_semaphore = xSemaphoreCreateBinary();
+    if (send_semaphore == NULL) {
+        ESP_LOGE(TAG, "Create send semaphore fail");
+        return;
+    }
+    xSemaphoreGive(send_semaphore); // crucial
     
     ESP_LOGI(TAG, "ESP-MESH-LITE initialized");
 }

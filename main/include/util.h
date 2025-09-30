@@ -23,6 +23,8 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_mac.h"
+#include "esp_now.h"
+#include "esp_crc.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
