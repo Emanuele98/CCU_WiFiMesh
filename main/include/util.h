@@ -49,20 +49,17 @@
 #define OVERCURRENT_RX                      2
 #define OVERVOLTAGE_RX                      100
 #define OVERTEMPERATURE_RX                  60
-#define MIN_VOLTAGE                         50
+#define MIN_RX_VOLTAGE                      50
 
 /* LOC TIMING */
 #define REACTION_TIME                       1000    //milliseconds
 #define BATON_PASS_TIMEOUT                  10000   //milliseconds
 #define UART_TX_DELAY                       100     //milliseconds
 
-/* DYNAMIC PAYLOAD TIMING */
-#define PEER_DYNAMIC_TIMER                  1000    //milliseconds
+/* DYNAMIC PAYLOAD MAX TIMING */
+#define PEER_DYNAMIC_TIMER                  30000    //30s
 
 /* ESPNOW MESSAGES */
-#define LOC_START_MESSAGE                   0x10
-#define LOC_STOP_MESSAGE                    0x01
-#define ACCELEROMETER_MESSAGE               0x02
 #define ALERT_MESSAGE                       0x99
 
 /* RECONNECTION TIMING */
@@ -76,13 +73,6 @@
 
 /* FOD_CLEAR_TIMEOUT */
 #define FOD_CLEAR_TIMEOUT                   4000     //2 seconds
-
-/* Mesh message IDs */
-#define TO_ROOT_STATIC_MSG_ID               0x1000
-#define TO_ROOT_STATIC_MSG_ID_RESP          0x1001
-
-#define TO_ROOT_DYNAMIC_MSG_ID              0x1002
-#define TO_CHILD_LOCALIZATION_MSG_ID        0x1003
 
 //* Global Alerts variables
 extern float OVER_CURRENT;

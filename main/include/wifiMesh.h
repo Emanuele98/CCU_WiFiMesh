@@ -4,26 +4,24 @@
 #include "util.h"
 #include "peer.h"
 
-#define ESPNOW_QUEUE_MAXDELAY         10000 //10 seconds
+/* Mesh-LITE*/
+#define TO_ROOT_STATIC_MSG_ID               0x1000
+#define TO_ROOT_STATIC_MSG_ID_RESP          0x1001
 
-#define MAX_COMMS_ERROR         10
+#define TO_ROOT_DYNAMIC_MSG_ID              0x1002
+#define TO_CHILD_LOCALIZATION_MSG_ID        0x1003 //todo Dynamic - Alert - Control to be done via MESH LITE TXs!
 
-#define ESPNOW_QUEUE_SIZE       10
-#define BROADCAST_TIMEGAP       pdMS_TO_TICKS(1000)
+/* ESP-NOW*/
+#define ESPNOW_QUEUE_MAXDELAY               10000 //10 seconds
+#define MAX_COMMS_ERROR                     10
+#define ESPNOW_QUEUE_SIZE                   20
 
+/* ESP-NOW message type */
 typedef enum {
-    DATA_BROADCAST,
-    DATA_LOCALIZATION,
-    DATA_ALERT,
-    DATA_DYNAMIC,
-    DATA_CONTROL
-} message_type;
-
-typedef enum {
-    LOCALIZATION_START,
-    LOCALIZATION_CHECK,
-    LOCALIZATION_STOP,
-} localization_message_t;
+    DATA_BROADCAST,  // Contains Localization (RX Voltage)
+    DATA_ALERT,      // Contains Alert from RX
+    DATA_DYNAMIC,    // Dynamic Payload from RX
+} espnow_message_type;
 
 /* ESP NOW PAYLOAD */
 typedef struct { 
@@ -36,6 +34,7 @@ typedef struct {
     float field_4;                        
 } __attribute__((packed)) espnow_data_t;
 
+/* ESP-NOW structs */
 typedef enum {
     ID_ESPNOW_SEND_CB,
     ID_ESPNOW_RECV_CB,
