@@ -1,97 +1,82 @@
 
 #include "include/cru_hw.h"
 
-static const char* TAG = "HARDWARE";
-/*
-static esp_adc_cal_characteristics_t *adc_chars, *adc_chars2;
-static const adc_channel_t channel = ADC_CHANNEL_4;     //GPIO32 
-static const adc_channel_t channel2 = ADC_CHANNEL_5;   //GPIO33
-static const adc_bits_width_t width = ADC_WIDTH_BIT_12;
-static const adc_atten_t atten = ADC_ATTEN_DB_11;
-static const adc_atten_t atten2 = ADC_ATTEN_DB_6;
-static const adc_unit_t unit = ADC_UNIT_1;
-*/
+#define ADC_UNIT                    ADC_UNIT_1
+#define ADC_CONV_MODE               ADC_CONV_SINGLE_UNIT_1
+#define ADC_ATTEN                   ADC_ATTEN_DB_0
+#define ADC_BIT_WIDTH               SOC_ADC_DIGI_MAX_BITWIDTH
+
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+#define ADC_OUTPUT_TYPE             ADC_DIGI_OUTPUT_FORMAT_TYPE1
+#define ADC_GET_CHANNEL(p_data)     ((p_data)->type1.channel)
+#define ADC_GET_DATA(p_data)        ((p_data)->type1.data)
+#else
+#define ADC_OUTPUT_TYPE             ADC_DIGI_OUTPUT_FORMAT_TYPE2
+#define ADC_GET_CHANNEL(p_data)     ((p_data)->type2.channel)
+#define ADC_GET_DATA(p_data)        ((p_data)->type2.data)
+#endif
+
+#define READ_LEN                    64
+
+#if CONFIG_IDF_TARGET_ESP32
+static adc_channel_t channel[2] = {ADC_CHANNEL_4, ADC_CHANNEL_5}; //voltage gpio 32 //current gpio 33
+#else
+static adc_channel_t channel[2] = {ADC_CHANNEL_2, ADC_CHANNEL_3}; //voltage gpio 2 //current gpio 3
+#endif
+static adc_atten_t atten[2] = {ADC_ATTEN_DB_12, ADC_ATTEN_DB_6};
+
+static adc_continuous_handle_t handle = NULL;
+static adc_cali_handle_t adc_cali_handle_1 = NULL, adc_cali_handle_2 = NULL;
+
+static const char* TAG = "RX_HARDWARE";
 
 /* Semaphore used to protect against I2C reading simultaneously */
 static uint8_t counter = 0;
 
-
 static void init_adc(void)
-{
-    /* init ADC */
-    /*
-    adc1_config_width(width);
-    adc1_config_channel_atten(channel, atten);
-    adc1_config_channel_atten(channel2, atten2);
+{   
+    uint8_t channel_num = sizeof(channel) / sizeof(adc_channel_t);
 
-    //Characterize ADC
-    adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-    esp_adc_cal_characterize(unit, atten, width, DEFAULT_VREF, adc_chars);
-    adc_chars2 = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-    esp_adc_cal_characterize(unit, atten2, width, DEFAULT_VREF, adc_chars2);
-    */
-}
+    adc_continuous_handle_cfg_t adc_config = {
+        .max_store_buf_size = 1024,
+        .conv_frame_size = READ_LEN,
+    };
+    ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
 
-/**
- * @brief read sensor data
- *
- * ______________________________________________________________________________________
- * | start | slave_addr + rd_bit + ack | read 1 byte + ack  | read 1 byte + nack | stop |
- * --------|---------------------------|--------------------|--------------------|------|
- */
-static float adc_read_voltage_sensor(void)
-{
-    /*
-    float value;
+    adc_continuous_config_t dig_cfg = {
+        .sample_freq_hz = 40 * 1000,
+        .conv_mode = ADC_CONV_MODE,
+        .format = ADC_OUTPUT_TYPE,
+    };
 
-    uint32_t voltage_reading = 0;
-    voltage_reading += adc1_get_raw((adc1_channel_t)channel);
+    adc_digi_pattern_config_t adc_pattern[SOC_ADC_PATT_LEN_MAX] = {0};
+    dig_cfg.pattern_num = channel_num;
+    for (int i = 0; i < channel_num; i++) {
+        adc_pattern[i].atten = atten[i];
+        adc_pattern[i].channel = channel[i] & 0x7;
+        adc_pattern[i].unit = ADC_UNIT;
+        adc_pattern[i].bit_width = ADC_BIT_WIDTH;
+    }
+    dig_cfg.adc_pattern = adc_pattern;
+
+    ESP_ERROR_CHECK(adc_continuous_config(handle, &dig_cfg));
+
+    adc_cali_curve_fitting_config_t cali_config_1 = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+        adc_cali_curve_fitting_config_t cali_config_2 = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_6,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
     
-    //Convert voltage_reading to voltage in mV
-    uint32_t voltage = esp_adc_cal_raw_to_voltage(voltage_reading, adc_chars);
-    //printf("Raw: %d\tVoltage: %dmV\n", voltage_reading, voltage);
-    value = (float)(voltage*42/1000.00);
-    if (value < 10)
-    {
-        //printf("--VOLTAGE: 0.00 \n");
-        return 0;
-    }
-    else
-    {
-        //printf("--VOLTAGE: %.2f\n", value);
-        return value;
-    }
-        */
+    ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config_1, &adc_cali_handle_1));
+    ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config_2, &adc_cali_handle_2));
 
-    return 0;
+    ESP_ERROR_CHECK(adc_continuous_start(handle));
 }
-
-static float adc_read_current_sensor(void)
-{
-    /*
-    float value;
-
-    uint32_t current_reading = 0;
-    current_reading += adc1_get_raw((adc1_channel_t)channel2);
-    
-    //Convert voltage_reading to voltage in mV
-    uint32_t current = esp_adc_cal_raw_to_voltage(current_reading, adc_chars2);
-    //printf("Raw: %d\tVoltage: %dmV\n", voltage_reading, voltage);
-    value = (float)((current - 400)/360.00) * 1.1;
-
-    if (current < 450)
-    {
-        //printf("--CURRENT: 0.00 \n");
-        return 0;
-    }
-    else
-    {
-        //printf("--CURRENT: %.2f\n", value);
-        return value;
-    }
-    */
-   return 0;
-}    
 
 static float i2c_read_temperature_sensor(bool n_temp_sens)
 {
@@ -149,35 +134,65 @@ static float i2c_read_temperature_sensor(bool n_temp_sens)
 //read dynamic parameters from ADC sensors
 static void get_adc(void *pvParameters)
 {
-    static float volt = 0, curr = 0;
-    static int adc_counter = 0;
+    esp_err_t ret;
+    uint32_t ret_num = 0;
+    uint8_t result[READ_LEN] = {0};
+    memset(result, 0xcc, READ_LEN);
 
-    while(1)
+    // Averaging variables
+    uint32_t ch2_sum = 0, ch3_sum = 0;
+    uint16_t ch2_count = 0, ch3_count = 0;
+
+    while (1) 
     {
-        adc_counter++;
-        
-        //voltage
-        volt += adc_read_voltage_sensor();
-        //current
-        curr += adc_read_current_sensor();         
-        
-        //Multisampling
-        if (adc_counter == NO_OF_SAMPLES)
+        ret = adc_continuous_read(handle, result, READ_LEN, &ret_num, 100); //100 ms timeout
+        if (ret == ESP_OK) 
         {
-            //average
-            dynamic_payload.voltage = volt / NO_OF_SAMPLES;
-            dynamic_payload.current = curr / NO_OF_SAMPLES;
+            // Accumulate samples (don't log each one!)
+            for (int i = 0; i < ret_num; i += SOC_ADC_DIGI_RESULT_BYTES) {
+                adc_digi_output_data_t *p = (adc_digi_output_data_t*)&result[i];
+                uint32_t chan_num = ADC_GET_CHANNEL(p);
+                uint32_t data = ADC_GET_DATA(p);
+                
+                if (chan_num == channel[0]) {
+                    ch2_sum += data;
+                    ch2_count++;
+                } else if (chan_num == channel[1]) {
+                    ch3_sum += data;
+                    ch3_count++;
+                }
+            }
+            // Log averages every 100 samples per channel (~50ms at 40kHz)
+            if (ch2_count >= 100 && ch3_count >= 100) {
+                int ch2_raw = ch2_sum / ch2_count;
+                int ch3_raw = ch3_sum / ch3_count;
+                
+                int ch2_voltage_mv, ch3_voltage_mv;
+                esp_err_t err1 = adc_cali_raw_to_voltage(adc_cali_handle_1, ch2_raw, &ch2_voltage_mv);
+                esp_err_t err2 = adc_cali_raw_to_voltage(adc_cali_handle_2, ch3_raw, &ch3_voltage_mv);
+                
+                if (err1 == ESP_OK && err2 == ESP_OK) {
+                    // Update global payload if needed
+                    dynamic_payload.voltage = (float)(ch2_voltage_mv * 42/1000.00);
+                    dynamic_payload.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
+                    //ESP_LOGI(TAG, "Ch2: %.3fV --> Voltage: %.3f, Ch3: %.3fV --> Current: %.3f", 
+                    //    ch2_voltage_mv/1000.0f, dynamic_payload.voltage, ch3_voltage_mv/1000.0f, dynamic_payload.current);
+                }
+                
+                // Reset counters
+                ch2_sum = ch3_sum = 0;
+                ch2_count = ch3_count = 0;
+            }
 
-            volt = 0;
-            curr = 0;
-            adc_counter = 0;
-
-            //ESP_LOGW(TAG, "Voltage: %.2f, Current: %.2f", dynamic_payload.voltage, dynamic_payload.current );
-            vTaskDelay(pdMS_TO_TICKS(50));
+            //vTaskDelay(1);
+        } else if (ret == ESP_ERR_TIMEOUT) {
+            vTaskDelay(1); //prevent tight loop
+            continue;
         }
     }
 
-    //if for any reason the loop terminates
+    ESP_ERROR_CHECK(adc_continuous_stop(handle));
+    ESP_ERROR_CHECK(adc_continuous_deinit(handle));
     vTaskDelete(NULL); 
 }
 
@@ -220,23 +235,6 @@ static void get_temp(void *pvParameters)
 
 void RX_init_hw(void)
 {
-    /* INIT OUTPUT PIN */
-    gpio_config_t io_conf;
-    //disable interrupt
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    //set as output mode
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    //bit mask of the pins
-    io_conf.pin_bit_mask = (1ULL<<25);
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    //configure GPIO with the given settings
-    gpio_config(&io_conf);
-    //SET IT LOW
-    gpio_set_level(25, 0);
-
     /* Init adc */
     init_adc();
     ESP_LOGI(TAG, "ADC initialized");
@@ -246,16 +244,16 @@ void RX_init_hw(void)
     i2c_sem = xSemaphoreCreateBinary();
     xSemaphoreGive(i2c_sem);
 
-    ESP_LOGI(TAG, "I2C initialized - temperature sensors and accelerometer");
+    ESP_LOGI(TAG, "I2C initialized - temperature sensors");
 
     uint8_t err;
     // create tasks to get measurements as fast as possible
-    err = xTaskCreate(get_temp, "get_temp", 4096, NULL, 5, NULL);
-    if ( err != pdPASS )
-    {
-        ESP_LOGE(TAG, "Task get_temp was not created successfully");
-        return;
-    }
+    //err = xTaskCreate(get_temp, "get_temp", 4096, NULL, 5, NULL);
+    //if ( err != pdPASS )
+    //{
+    //    ESP_LOGE(TAG, "Task get_temp was not created successfully");
+    //    return;
+    //}
     err = xTaskCreate(get_adc, "get_adc", 4096, NULL, 5, NULL);
     if( err != pdPASS )
     {

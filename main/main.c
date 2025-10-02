@@ -44,11 +44,11 @@ void app_main(void)
     #if CONFIG_TX_UNIT
         //TX_init_hw();
     #else
-        //RX_init_hw();
+        RX_init_hw();
     #endif
 
     /* Initialize WiFi Mesh */
-    wifi_mesh_init();
+    //wifi_mesh_init();
 
     //local mesh formation done!
     //master on any node (peer s-link structure) - make 2 lists

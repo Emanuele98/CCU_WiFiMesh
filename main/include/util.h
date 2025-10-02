@@ -94,6 +94,7 @@ extern nvs_handle_t my_handle;
 
 extern bool rxLocalized;
 extern uint8_t rxDynTimeout;
+extern EventGroupHandle_t eventGroupHandle;
 
 /**
  * @brief Init the values on NVS - This allows to keep track of each peer's minimum reconnection time over reboots.

@@ -12,6 +12,7 @@ SemaphoreHandle_t i2c_sem;
 
 bool rxLocalized = false;
 uint8_t rxDynTimeout = PEER_DYNAMIC_TIMER;
+EventGroupHandle_t eventGroupHandle;
 
 //* Global Alerts variables
 #if CONFIG_TX_UNIT

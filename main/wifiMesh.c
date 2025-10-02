@@ -174,13 +174,39 @@ static void send_static_payload(void)
 
 //*esp-NOW functions
 /* Parse received ESPNOW data. */
+static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
+{
+    struct RX_peer *p = RX_peer_find_by_mac(mac);
+    if (p != NULL)
+    {
+        ESP_LOGI(TAG, "Handle DYNAMIC RX with ID %d", p->id);
+        
+        //populate strucure for later comparison
+        //misaligned/left check?
+        //share with root via meshLite
+    }
+}
+
+static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
+{
+    struct RX_peer *p = RX_peer_find_by_mac(mac);
+    if (p != NULL)
+    {
+        ESP_LOGI(TAG, "Handle ALERT RX with ID %d", p->id);
+        //handle alerts locally
+        //share with root via meshLite
+        //NVS handling?
+    }
+}
+
+
 uint8_t espnow_data_crc_control(uint8_t *data, uint16_t data_len)
 {
     espnow_data_t *buf = (espnow_data_t *)data;
     uint16_t crc, crc_cal = 0;
 
     if (data_len < sizeof(espnow_data_t)) {
-        ESP_LOGE(TAG, "Receive ESPNOW data too short, len:%d", data_len); //! problem here!
+        ESP_LOGE(TAG, "Receive ESPNOW data too short, len:%d", data_len);
         return -1;
     }
 
@@ -443,11 +469,11 @@ static void espnow_task(void *pvParameter)
                                     // ask for dynamic data 
                                     espnow_send_message(DATA_ASK_DYNAMIC, recv_cb->mac_addr);
                                 }
-                                //else //todo advise other TX which then save the peer
+                                //else //todo advise other TX which then save the peer //p->position update
 
                             }
                             //Case 3 - I am TX - am I active? yes then tell master - no then discard //todo later
-                            else if (UNIT_ROLE == TX && switchedON)
+                            else if (UNIT_ROLE == TX && switchedON) // todo add RX peer structure to keep track of it
                             {
                                 ESP_LOGI(TAG, "RX has been located to this pad!");
                                 //Advise master 
@@ -477,19 +503,16 @@ static void espnow_task(void *pvParameter)
                     else if(msg_type == DATA_DYNAMIC)
                     {
                         ESP_LOGI(TAG, "Receive DYNAMIC data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
-
-                        //handle_peer_dynamic(recv_data, espnow_data);
+                        handle_peer_dynamic(recv_data, recv_cb->mac_addr); //todo
                     }
-                    /*
-                    else if (msg_type == ESPNOW_DATA_ALERT)
+                    else if (msg_type == DATA_ALERT)
                     {
                         ESP_LOGI(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
-
-                        handle_peer_alert(recv_data, espnow_data);
+                        handle_peer_alert(recv_data, recv_cb->mac_addr);
                     }
-                    } else
-                        ESP_LOGI(TAG, "Receive unexpected message type %d data from: "MACSTR"", addr_type, MAC2STR(recv_cb->mac_addr));
-                    */
+                    else
+                        ESP_LOGI(TAG, "Receive unexpected message type %d data from: "MACSTR"", msg_type, MAC2STR(recv_cb->mac_addr));
+
                     free(recv_data);
                     break;
                 }
@@ -536,9 +559,9 @@ static void wifi_mesh_lite_task(void *pvParameters)
                 #else
                 if (!rxLocalized)
                 {
-                    //espnow broadcast when voltage rises + dynamic payload later
+                    //espnow broadcast when voltage rises
+                    xEventGroupWaitBits(eventGroupHandle, BIT0, pdTRUE, pdFALSE, 5000);
                     espnow_send_message(DATA_BROADCAST, broadcast_mac);
-                    vTaskDelay(1000); //todo: based on voltage rises
                 }
                 else
                 {
@@ -703,7 +726,10 @@ static void wifi_init(void)
 }
 
 void wifi_mesh_init()
-{    
+{   
+    //Create group event 
+    eventGroupHandle = xEventGroupCreate();
+
     // Initialize networking
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

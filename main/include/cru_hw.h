@@ -5,25 +5,14 @@
 #include <peer.h>
 
 #include "driver/i2c.h"
-#include "driver/gpio.h"
-#include "driver/adc.h"
-#include "esp_adc_cal.h"
-#include "driver/gpio.h"
+#include "esp_adc/adc_continuous.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 
 #define AVG_ALERT_WINDOW                10
 #define FULLY_CHARGED_MIN_VOLTAGE       50
 #define FULLY_CHARGED_MAX_CURRENT       0.2
 #define MAX_FULLY_CHARGED_ALERT_CHECKS  250 
-
-/* adc */
-#define DEFAULT_VREF    1100        //Use adc2_vref_to_gpio() to obtain a better estimate
-// check specific eFuse Vref with espefuse.py --port COMx adc_info
-#define NO_OF_SAMPLES   2000          //Multisampling
-
-
-#define ALERT_PARAM_TIMER_INTERVAL      pdMS_TO_TICKS(100)				       /**< Timer synced to Alert parameter characteristic (60 ms). */
-
-#define ACCELEROMETER_ACTIVE_TIME       pdMS_TO_TICKS(3000)                    /**< Accelerometer active time (3 second). !must not mess with the IPT link */
 
 #define I2C_MASTER_SCL_IO 19                                  /*!< gpio number for I2C master clock */
 #define I2C_MASTER_SDA_IO 18                                  /*!< gpio number for I2C master data  */

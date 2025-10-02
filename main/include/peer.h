@@ -68,7 +68,6 @@ typedef struct
     float             temp2;              /**< Temperature value from I2C (4 bytes). */
     float             rx_power;           /* Calculate received power if peer is CRU */
     float             tx_power;           /* Calculate transmitted power if peer is CTU */
-    time_t            dyn_time;           /** Time */
 } wpt_dynamic_payload_t;
 
 /**
@@ -130,6 +129,7 @@ struct TX_peer
     wpt_alert_payload_t  alert_payload;
 };
 
+//Self-structures
 extern wpt_dynamic_payload_t dynamic_payload;
 extern wpt_alert_payload_t alert_payload;
 extern wpt_tuning_params_t tuning_params;
