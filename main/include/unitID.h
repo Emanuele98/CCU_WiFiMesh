@@ -6,7 +6,7 @@
 //#define CONFIG_RX_UNIT      1
 
 //* ID of the unit (make sure it's unique in the network)
-#define CONFIG_UNIT_ID      1 
+#define CONFIG_UNIT_ID      1
 
 
 // todo later: Unit role automatically detected (I2C scan?)

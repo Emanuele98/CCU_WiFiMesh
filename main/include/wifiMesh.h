@@ -18,9 +18,10 @@
 
 /* ESP-NOW message type */
 typedef enum {
-    DATA_BROADCAST,  // Contains Localization (RX Voltage)
-    DATA_ALERT,      // Contains Alert from RX
-    DATA_DYNAMIC,    // Dynamic Payload from RX
+    DATA_BROADCAST,                      // Contains Localization (RX Voltage)
+    DATA_ALERT,                          // Contains Alert from RX
+    DATA_DYNAMIC,                        // Dynamic Payload from RX
+    DATA_ASK_DYNAMIC,                    // Ask dynamic payload from RX
 } espnow_message_type;
 
 /* ESP NOW PAYLOAD */

@@ -10,6 +10,9 @@ nvs_handle_t my_handle;
 
 SemaphoreHandle_t i2c_sem;
 
+bool rxLocalized = false;
+uint8_t rxDynTimeout = PEER_DYNAMIC_TIMER;
+
 //* Global Alerts variables
 #if CONFIG_TX_UNIT
     float OVER_CURRENT = OVERCURRENT_TX;
