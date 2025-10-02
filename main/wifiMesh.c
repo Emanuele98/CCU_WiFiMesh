@@ -236,8 +236,10 @@ static void espnow_data_prepare(espnow_data_t *buf, espnow_message_type type)
     switch (type)
     {
     case DATA_BROADCAST:
-        buf->field_1 = 80; //todo Simulate RX voltage
+        buf->field_1 = dynamic_payload.voltage;
+        ESP_LOGI(TAG, "Broadcast data voltage %.2f", buf->field_1);
         break;
+
     case DATA_ASK_DYNAMIC:
         buf->field_1 = PEER_DYNAMIC_TIMER; //Min time between dynamic messages from RX
         break;
@@ -452,6 +454,7 @@ static void espnow_task(void *pvParameter)
                     if (msg_type == DATA_BROADCAST) 
                     {
                         ESP_LOGI(TAG, "Receive broadcast data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+                        ESP_LOGI(TAG, "rx voltage %.2f", recv_data->field_1);
                         bool switchedON = true; //todo simulate sequential HW switching
 
                         if (recv_data->field_1 > MIN_RX_VOLTAGE)
@@ -549,7 +552,6 @@ static void wifi_mesh_lite_task(void *pvParameters)
             if (is_root_node)
             {
                 // take care of sequential switching during localization
-
             }
             else
             {
@@ -718,8 +720,8 @@ static void wifi_init(void)
             .authmode = CONFIG_MESH_AP_AUTHMODE,
             .channel = 0, //automatically found
             .max_connection = 10,
-            //.beacon_interval = 5000, //5ms
-            //.dtim_period = 5, // 1 to 10 - indicates how often the AP will send DTIM beacon indicating buffered data
+            .beacon_interval = 60000, //60ms
+            .dtim_period = 1, // 1 to 10 - indicates how often the AP will send DTIM beacon indicating buffered data
         },
     };
     esp_bridge_wifi_set_config(WIFI_IF_AP, &softap_config);

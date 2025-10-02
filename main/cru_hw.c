@@ -175,8 +175,12 @@ static void get_adc(void *pvParameters)
                     // Update global payload if needed
                     dynamic_payload.voltage = (float)(ch2_voltage_mv * 42/1000.00);
                     dynamic_payload.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
-                    //ESP_LOGI(TAG, "Ch2: %.3fV --> Voltage: %.3f, Ch3: %.3fV --> Current: %.3f", 
-                    //    ch2_voltage_mv/1000.0f, dynamic_payload.voltage, ch3_voltage_mv/1000.0f, dynamic_payload.current);
+                    ESP_LOGI(TAG, "Ch2: %.3fV --> Voltage: %.3f, Ch3: %.3fV --> Current: %.3f", 
+                        ch2_voltage_mv/1000.0f, dynamic_payload.voltage, ch3_voltage_mv/1000.0f, dynamic_payload.current);
+                }
+
+                if (dynamic_payload.voltage > MIN_RX_VOLTAGE) {
+                    xEventGroupSetBits(eventGroupHandle, BIT0);
                 }
                 
                 // Reset counters
@@ -184,8 +188,9 @@ static void get_adc(void *pvParameters)
                 ch2_count = ch3_count = 0;
             }
 
-            //vTaskDelay(1);
+            taskYIELD();  // Give other tasks a chance
         } else if (ret == ESP_ERR_TIMEOUT) {
+            ESP_LOGE(TAG, "ADC TIMEOUT");
             vTaskDelay(1); //prevent tight loop
             continue;
         }
@@ -254,7 +259,7 @@ void RX_init_hw(void)
     //    ESP_LOGE(TAG, "Task get_temp was not created successfully");
     //    return;
     //}
-    err = xTaskCreate(get_adc, "get_adc", 4096, NULL, 5, NULL);
+    err = xTaskCreate(get_adc, "get_adc", 10000, NULL, 6, NULL); 
     if( err != pdPASS )
     {
         ESP_LOGE(TAG, "Task get_ was not created successfully");
