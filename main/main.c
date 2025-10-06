@@ -50,9 +50,6 @@ void app_main(void)
     /* Initialize WiFi Mesh */
     wifi_mesh_init();
 
-    //TRY CONFIG_ADC_CONTINUOUS_ISR_IRAM_SAFE=y
-
-
     //local mesh formation done!
     //master on any node (peer s-link structure) - make 2 lists
     //static payload done
