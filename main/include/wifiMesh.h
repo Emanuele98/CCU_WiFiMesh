@@ -9,7 +9,13 @@
 #define TO_ROOT_STATIC_MSG_ID_RESP          0x1001
 
 #define TO_ROOT_DYNAMIC_MSG_ID              0x1002
-#define TO_CHILD_LOCALIZATION_MSG_ID        0x1003 //todo Dynamic - Alert - Control to be done via MESH LITE TXs!
+#define TO_ROOT_DYNAMIC_MSG_ID_RESP         0x1003
+
+#define TO_ROOT_ALERT_MSG_ID                0x1004
+#define TO_ROOT_ALERT_MSG_ID_RESP           0x1005
+
+#define TO_CHILD_CONTROL_MSG_ID              0x1006
+#define TO_CHILD_CONTROL_MSG_ID_RESP         0x1007
 
 /* ESP-NOW*/
 #define ESPNOW_QUEUE_MAXDELAY               10000 //10 seconds

@@ -57,7 +57,7 @@
 #define UART_TX_DELAY                       100     //milliseconds
 
 /* DYNAMIC PAYLOAD MAX TIMING */
-#define PEER_DYNAMIC_TIMER                  30    //30s
+#define PEER_DYNAMIC_TIMER                  10    //30s
 
 /* ESPNOW MESSAGES */
 #define ALERT_MESSAGE                       0x99
@@ -95,6 +95,9 @@ extern nvs_handle_t my_handle;
 extern bool rxLocalized;
 extern uint8_t rxDynTimeout;
 extern EventGroupHandle_t eventGroupHandle;
+
+//Self-MAC address
+extern uint8_t self_mac[ETH_HWADDR_LEN];
 
 /**
  * @brief Init the values on NVS - This allows to keep track of each peer's minimum reconnection time over reboots.

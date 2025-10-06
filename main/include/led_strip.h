@@ -135,19 +135,19 @@ void install_strip(uint8_t pin);
  * @brief Function used by the timer for the default connected led state
  * 
  */
-void connected_leds(void *pvParameters);
+void connected_leds(TimerHandle_t xTimer);
 
 /**
  * @brief Function used for orange blinking when the scooter is misaligned 
  *  
  */
-void misaligned_leds(void *pvParameters);
+void misaligned_leds(TimerHandle_t xTimer);
 
 /**
  * @brief Function used for orange blinking when the scooter is charging
  * 
  */
-void charging_state(void *pvParameters);
+void charging_state(TimerHandle_t xTimer);
 
 
 /**

@@ -14,16 +14,14 @@ typedef enum {
     #define UNIT_ROLE RX
 #endif
 typedef enum {
-    TX_DISCONNECTED,       //when the pad is not connected
-    TX_CONNECTED,          //when the pad is connected 
-    TX_LOW_POWER,          //when the pad is on low power mode
-    TX_FULL_POWER,         //when the pad is on full power mode
+    TX_OFF,                //when the pad is off
+    TX_LOCALIZATION,       //when the pad is active for localization (soft duty cycle thresholds) 
+    TX_DEPLOY,             //when the pad is active on deploy (hard duty cycle thresholds)
     TX_FULLY_CHARGED,      //when the pad is off but a fully charged scooter is still present on it
     TX_ALERT               //when the pad sent an alert (overcurrent, overvoltage, overtemperature, FOD)
 } TX_status;
 
 typedef enum {
-    RX_DISCONNECTED,   //when the scooter is not connected
     RX_CONNECTED,      //when the scooter is connected but not localized yet
     RX_CHARGING,       //when the position is found
     RX_MISALIGNED,     //when the scooter is misaligned
@@ -53,7 +51,7 @@ typedef struct
     float            OVERCURRENT_limit;     /* Overcurrent alert limit */
     float            OVERTEMPERATURE_limit; /* Overtemperature alert limit */
     bool             FOD;                   /* FOD active */
-} wpt_static_payload_t;
+} mesh_static_payload_t;
 
 /**
  * @brief Dynamic characteristic structure. This contains elements necessary for dynamic payload.
@@ -68,7 +66,7 @@ typedef struct
     float             temp2;              /**< Temperature value from I2C (4 bytes). */
     float             rx_power;           /* Calculate received power if peer is CRU */
     float             tx_power;           /* Calculate transmitted power if peer is CTU */
-} wpt_dynamic_payload_t;
+} mesh_dynamic_payload_t;
 
 /**
  * @brief Alert characteristic structure. This contains elements necessary for alert payload.
@@ -86,7 +84,7 @@ typedef struct
         } internal;
         uint8_t all_flags;                 /* To check if at least one alert is active */
     };           
-} wpt_alert_payload_t;
+} mesh_alert_payload_t;
 
 /**
  * @brief Tuning params structure for TX transitor waveforms
@@ -98,7 +96,7 @@ typedef struct
     uint8_t           tuning;
     uint8_t           low_vds_threshold;
     uint8_t           low_vds;
-} wpt_tuning_params_t;
+} mesh_tuning_params_t;
 
 /**
  * @brief TX peer structure. This contains elements necessary for TX peer management.
@@ -124,15 +122,11 @@ struct TX_peer
     led_command_type led_command;
 
     /** Peripheral payloads. */
-    wpt_static_payload_t static_payload;
-    wpt_dynamic_payload_t dyn_payload;
-    wpt_alert_payload_t  alert_payload;
+    mesh_static_payload_t *static_payload;
+    mesh_dynamic_payload_t *dynamic_payload;
+    mesh_alert_payload_t  *alert_payload;
+    mesh_tuning_params_t *tuning_params;
 };
-
-//Self-structures
-extern wpt_dynamic_payload_t dynamic_payload;
-extern wpt_alert_payload_t alert_payload;
-extern wpt_tuning_params_t tuning_params;
 
 /**
  * @brief RX peer structure. This contains elements necessary for RX peer management.
@@ -155,10 +149,24 @@ struct RX_peer
     RX_status RX_status;
 
     /** Peripheral payloads. */
-    wpt_static_payload_t static_payload;
-    wpt_dynamic_payload_t dyn_payload;
-    wpt_alert_payload_t  alert_payload;
+    mesh_static_payload_t *static_payload;
+    mesh_dynamic_payload_t *dynamic_payload;
+    mesh_alert_payload_t  *alert_payload;
 };
+
+//Self-structures
+extern mesh_static_payload_t self_static_payload;
+extern mesh_dynamic_payload_t self_dynamic_payload;
+extern mesh_alert_payload_t self_alert_payload;
+extern mesh_tuning_params_t self_tuning_params;
+
+/**
+ * @brief Check if at least one RX was not localized yet, and at least one TX pad is available
+ * 
+ * @return true 
+ * @return false 
+ */
+bool atLeastOneRxNeedLocalization();
 
 /**
  * @brief Initialize the peer management system
@@ -170,17 +178,17 @@ void peer_init();
  * @brief Add a new TX peer to the TX_peers list
  * 
  * @param mac MAC address of the new peer
- * @return uint8_t Returns 0 on success, 1 if unable to add (list full or duplicate ID)
+ * @return TX_peer on success, NULL if unable to add (list full or duplicate ID)
  */
-uint8_t TX_peer_add(uint8_t *mac);
+struct TX_peer* TX_peer_add(uint8_t *mac);
 
 /**
  * @brief Add a new RX peer to the RX_peers list
  * 
  * @param mac MAC address of the new peer
- * @return uint8_t Returns 0 on success, 1 if unable to add (list full or duplicate ID)
+ * @return RX_peer on success, NULL if unable to add (list full or duplicate ID)
  */
-uint8_t RX_peer_add(uint8_t *mac);
+struct RX_peer* RX_peer_add(uint8_t *mac);
 
 /**
  * @brief Find a TX_peer by its MAC address

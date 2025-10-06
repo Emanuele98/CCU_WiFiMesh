@@ -110,7 +110,6 @@ static void get_adc(void *pvParameters)
 
     // Averaging variables
     uint32_t ch2_sum = 0, ch3_sum = 0;
-    uint16_t ch2_count = 0, ch3_count = 0;
     uint32_t read_success = 0, read_errors = 0;
 
     while (1) 
@@ -126,14 +125,12 @@ static void get_adc(void *pvParameters)
             
             // Accumulate samples
             ch2_sum += ch2_raw;
-            ch2_count++;
             ch3_sum += ch3_raw;
-            ch3_count++;
             
-            // Average every 100 samples
-            if (ch2_count >= 100 && ch3_count >= 100) {
-                int ch2_avg = ch2_sum / ch2_count;
-                int ch3_avg = ch3_sum / ch3_count;
+            // Average every 50 samples
+            if (read_success >= 50) {
+                int ch2_avg = ch2_sum / read_success;
+                int ch3_avg = ch3_sum / read_success;
                 
                 int ch2_voltage_mv, ch3_voltage_mv;
                 esp_err_t err1 = adc_cali_raw_to_voltage(adc_cali_handle_1, ch2_avg, &ch2_voltage_mv);
@@ -141,15 +138,15 @@ static void get_adc(void *pvParameters)
                 
                 if (err1 == ESP_OK && err2 == ESP_OK) {
                     // Update global payload
-                    dynamic_payload.voltage = (float)(ch2_voltage_mv * 42/1000.00);
-                    dynamic_payload.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
+                    self_dynamic_payload.voltage = (float)(ch2_voltage_mv * 42/1000.00);
+                    self_dynamic_payload.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
                     
                     //ESP_LOGI(TAG, "Ch2: %.3fV --> Voltage: %.3f, Ch3: %.3fV --> Current: %.3f", 
-                    //    ch2_voltage_mv/1000.0f, dynamic_payload.voltage, 
-                    //    ch3_voltage_mv/1000.0f, dynamic_payload.current);
+                    //    ch2_voltage_mv/1000.0f, self_dynamic_payload.voltage, 
+                    //    ch3_voltage_mv/1000.0f, self_dynamic_payload.current);
                 }
 
-                if (dynamic_payload.voltage > MIN_RX_VOLTAGE) {
+                if (self_dynamic_payload.voltage > MIN_RX_VOLTAGE) {
                     xEventGroupSetBits(eventGroupHandle, BIT0);
                 }
                 
@@ -160,8 +157,7 @@ static void get_adc(void *pvParameters)
                 //}
                 
                 // Reset counters
-                ch2_sum = ch3_sum = 0;
-                ch2_count = ch3_count = 0;
+                ch2_sum = ch3_sum = read_success = 0;
             }
         } else {
             read_errors++;
@@ -191,14 +187,14 @@ static void get_temp(void *pvParameters)
                     counter++;
                     t1 = i2c_read_temperature_sensor(0);
                     if (t1 != -1)
-                        dynamic_payload.temp1 = t1;
+                        self_dynamic_payload.temp1 = t1;
                     break;
 
                 case 1:
                     counter = 0;
                     t2 = i2c_read_temperature_sensor(1);
                     if (t2 != -1)
-                        dynamic_payload.temp2= t2;
+                        self_dynamic_payload.temp2= t2;
                     break;
                 default:
                     xSemaphoreGive(i2c_sem);

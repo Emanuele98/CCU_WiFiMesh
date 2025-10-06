@@ -42,7 +42,7 @@ void app_main(void)
 
     /* Initialize Hardware */
     #if CONFIG_TX_UNIT
-        //TX_init_hw();
+        TX_init_hw();
     #else
         RX_init_hw();
     #endif

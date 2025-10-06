@@ -14,54 +14,54 @@ static void parse_received_UART(uint8_t *rx_uart)
     //parse json
     cJSON *root = cJSON_Parse((char*)rx_uart);
     
-    dynamic_payload.temp1 = cJSON_GetObjectItem(root, "temperature1")->valuedouble;
-    //ESP_LOGI(TAG, "TEMP1: %.2f", dynamic_payload.temp1);
+    self_dynamic_payload.temp1 = cJSON_GetObjectItem(root, "temperature1")->valuedouble;
+    //ESP_LOGI(TAG, "TEMP1: %.2f", self_dynamic_payload.temp1);
 
-    dynamic_payload.temp2 = cJSON_GetObjectItem(root, "temperature2")->valuedouble;
-    //ESP_LOGI(TAG, "TEMP2: %.2f", dynamic_payload.temp2);
+    self_dynamic_payload.temp2 = cJSON_GetObjectItem(root, "temperature2")->valuedouble;
+    //ESP_LOGI(TAG, "TEMP2: %.2f", self_dynamic_payload.temp2);
 
-    dynamic_payload.voltage = cJSON_GetObjectItem(root, "voltage")->valuedouble;
-    //ESP_LOGI(TAG, "VOLTAGE: %.2f", dynamic_payload.voltage);
+    self_dynamic_payload.voltage = cJSON_GetObjectItem(root, "voltage")->valuedouble;
+    //ESP_LOGI(TAG, "VOLTAGE: %.2f", self_dynamic_payload.voltage);
 
-    dynamic_payload.current = cJSON_GetObjectItem(root, "current")->valuedouble;
-    //ESP_LOGI(TAG, "CURRENT: %.2f", dynamic_payload.current);
+    self_dynamic_payload.current = cJSON_GetObjectItem(root, "current")->valuedouble;
+    //ESP_LOGI(TAG, "CURRENT: %.2f", self_dynamic_payload.current);
 
     alertType_t alertType = cJSON_GetObjectItem(root,"alert")->valueint;
     //ESP_LOGW(TAG, "ALERT: %d", alertType);
 
     //* handle alert
     if (alertType == OV)
-        alert_payload.internal.overvoltage = 1;
+        self_alert_payload.internal.overvoltage = 1;
     else if (alertType == OC)
-        alert_payload.internal.overcurrent = 1;
+        self_alert_payload.internal.overcurrent = 1;
     else if (alertType == OT)
-        alert_payload.internal.overtemperature = 1;
+        self_alert_payload.internal.overtemperature = 1;
     else if ((alertType == HS) || (alertType == DC))
-        alert_payload.internal.F = 1;
+        self_alert_payload.internal.F = 1;
 
-    if (alert_payload.all_flags)
+    if (self_alert_payload.all_flags)
     {
         ESP_LOGE(TAG, "ALERT: %d", alertType);
         //send_alert_message();
     }
 
     // send details to the master every time the duty cycle changes
-    tuning_params.duty_cycle = cJSON_GetObjectItem(root, "duty")->valuedouble;
-    //ESP_LOGI(TAG, "DUTY CYCLE: %.2f", tuning_params.duty_cycle);
+    self_tuning_params.duty_cycle = cJSON_GetObjectItem(root, "duty")->valuedouble;
+    //ESP_LOGI(TAG, "DUTY CYCLE: %.2f", self_tuning_params.duty_cycle);
     
-    tuning_params.tuning = cJSON_GetObjectItem(root, "tuning")->valueint;
-    //ESP_LOGW(TAG, "TUNING: %d", tuning_params.tuning);
+    self_tuning_params.tuning = cJSON_GetObjectItem(root, "tuning")->valueint;
+    //ESP_LOGW(TAG, "TUNING: %d", self_tuning_params.tuning);
     
-    tuning_params.low_vds_threshold = cJSON_GetObjectItem(root, "low_vds_threshold")->valueint;
-    //ESP_LOGW(TAG, "low_vds_threshold: %d", tuning_params.low_vds_threshold );
+    self_tuning_params.low_vds_threshold = cJSON_GetObjectItem(root, "low_vds_threshold")->valueint;
+    //ESP_LOGW(TAG, "low_vds_threshold: %d", self_tuning_params.low_vds_threshold );
 
-    tuning_params.low_vds = cJSON_GetObjectItem(root, "low_vds")->valueint;
-    //ESP_LOGW(TAG, "low_vds: %d", tuning_params.low_vds);
+    self_tuning_params.low_vds = cJSON_GetObjectItem(root, "low_vds")->valueint;
+    //ESP_LOGW(TAG, "low_vds: %d", self_tuning_params.low_vds);
 
-    if (fabs(tuning_params.duty_cycle - last_duty_cycle) > MIN_DUTY_CYCLE_CHANGE)
+    if (fabs(self_tuning_params.duty_cycle - last_duty_cycle) > MIN_DUTY_CYCLE_CHANGE)
     {
         //send_tuning_message();
-        last_duty_cycle = tuning_params.duty_cycle;
+        last_duty_cycle = self_tuning_params.duty_cycle;
     }
 
     //print json
@@ -235,7 +235,6 @@ void TX_init_hw()
     install_strip(STRIP_PIN);
     ESP_LOGI(TAG, "LED strip initialized successfully");
 
-    /*
     // LED strip timers
     connected_leds_timer = xTimerCreate("connected_leds", CONNECTED_LEDS_TIMER_PERIOD, pdTRUE, NULL, connected_leds);   
     misaligned_leds_timer = xTimerCreate("misaligned_leds", MISALIGNED_LEDS_TIMER_PERIOD, pdTRUE, NULL, misaligned_leds);
@@ -250,7 +249,7 @@ void TX_init_hw()
     xTimerStart(connected_leds_timer, 10);
     xTimerStart(misaligned_leds_timer, 10);
     xTimerStart(charging_leds_timer, 10);
-    */
+    
     
     //*UART CONNECTION TO STM32
     // the STM32 board sends sensor measurements to the ESP32 via UART, along with FOD alerts and other information

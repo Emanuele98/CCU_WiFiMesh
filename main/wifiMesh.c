@@ -8,7 +8,6 @@ static const char *TAG = "wifiMesh";
 // Network status
 static bool is_mesh_connected = false;
 static bool is_root_node = false;
-static uint8_t self_mac[ETH_HWADDR_LEN] = {0};
 static int mesh_level = -1;
 
 // Send semaphore to avoid concurrent access to RF resources
@@ -29,18 +28,18 @@ static uint8_t parent_mac[ETH_HWADDR_LEN] = {0};
  *                Function Definitions
  *******************************************************/
 
-// process response to static message - inside child
-static esp_err_t raw_msg_process_response(uint8_t *data, uint32_t len, 
+// process response to static raw message - inside child
+static esp_err_t static_to_root_raw_msg_response_process(uint8_t *data, uint32_t len, 
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
     //set static payload
-    ESP_LOGE( TAG, "Process message for root RESPONSE!");   
+    ESP_LOGW( TAG, "Process static message RESPONSE!");   
 
     // Process the received data
-    if (len != sizeof(wpt_static_payload_t)) {
+    if (len != sizeof(mesh_static_payload_t)) {
         ESP_LOGW(TAG, "Received unexpected message size: %d", len);
-        printf(" Expected: %d\n", sizeof(wpt_static_payload_t));
+        printf(" Expected: %d\n", sizeof(mesh_static_payload_t));
         printf("Data: ");
         for (int i = 0; i < len; i++) {
             printf("%02X ", data[i]);
@@ -49,7 +48,7 @@ static esp_err_t raw_msg_process_response(uint8_t *data, uint32_t len,
         return ESP_FAIL;
     }
 
-    wpt_static_payload_t *received_payload = (wpt_static_payload_t *)data;
+    mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
     ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
              received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
     ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
@@ -67,14 +66,14 @@ static esp_err_t raw_msg_process_response(uint8_t *data, uint32_t len,
     return ESP_OK;
 }
 
-// Process received raw messages - inside root
+// Process received static raw messages - inside root
 static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len, 
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    *out_len = sizeof(wpt_static_payload_t);
+    *out_len = sizeof(mesh_static_payload_t);
     *out_data = malloc(*out_len);
-    wpt_static_payload_t static_payload = {
+    mesh_static_payload_t my_static_payload = {
                     .id = CONFIG_UNIT_ID,
                     .type = UNIT_ROLE, 
                     .OVERVOLTAGE_limit = OVERVOLTAGE_TX,
@@ -82,15 +81,15 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
                     .OVERTEMPERATURE_limit = OVERTEMPERATURE_TX,
                     .FOD = FOD_ACTIVE
                 };
-    memcpy(static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
-    memcpy(*out_data, (uint8_t*)&static_payload, *out_len); // set here alerts
+    memcpy(my_static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
+    memcpy(*out_data, (uint8_t*)&my_static_payload, *out_len); // set here alerts
 
-    ESP_LOGE( TAG, "Process message for root");   
+    ESP_LOGW( TAG, "Process static message");   
     
     // Process the received data
-    if (len != sizeof(wpt_static_payload_t)) {
+    if (len != sizeof(mesh_static_payload_t)) {
         ESP_LOGW(TAG, "Received unexpected message size: %d", len);
-        printf(" Expected: %d\n", sizeof(wpt_static_payload_t));
+        printf(" Expected: %d\n", sizeof(mesh_static_payload_t));
         printf("Data: ");
         for (int i = 0; i < len; i++) {
             printf("%02X ", data[i]);
@@ -99,7 +98,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         return ESP_FAIL;
     }
 
-    wpt_static_payload_t *received_payload = (wpt_static_payload_t *)data;
+    mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
     ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
              received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
     ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
@@ -111,28 +110,139 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     //* Add peer strucutre
     if (received_payload->type == TX)
     {
-        ESP_ERROR_CHECK(TX_peer_add(received_payload->macAddr)); 
-        struct TX_peer *p = TX_peer_find_by_mac(received_payload->macAddr);
+        struct TX_peer *p = TX_peer_add(received_payload->macAddr);
         if (p != NULL)
         {
-            p->static_payload = *received_payload;
+            p->static_payload = received_payload;
             p->id = received_payload->id;
             p->position = p->id; // Position same as ID for TX
-            ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload.id);
+            ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload->id);
         }
     }
     else if (received_payload->type == RX)
     {
-        ESP_ERROR_CHECK(RX_peer_add(received_payload->macAddr)); 
-        struct RX_peer *p = RX_peer_find_by_mac(received_payload->macAddr);
+        struct RX_peer *p = RX_peer_add(received_payload->macAddr); 
         if (p != NULL)
         {
-            p->static_payload = *received_payload;
+            p->static_payload = received_payload;
             p->id = received_payload->id;
             p->position = 0; // Position unknown (variable) for RX
-            ESP_LOGI(TAG, "RX Peer structure added! ID: %d", p->static_payload.id);
+            ESP_LOGI(TAG, "RX Peer structure added! ID: %d", p->static_payload->id);
         }
     }
+
+    return ESP_OK;
+}
+// process response to dynamic raw message - inside child
+static esp_err_t dynamic_to_root_raw_msg_response_process(uint8_t *data, uint32_t len, 
+                                     uint8_t **out_data, uint32_t* out_len, 
+                                     uint32_t seq) 
+{
+    //set static payload
+    ESP_LOGW( TAG, "Process dynamic message RESPONSE!");   
+
+    return ESP_OK;
+}
+
+// Process received dynamic raw messages - inside root
+static esp_err_t dynamic_to_root_raw_msg_process(uint8_t *data, uint32_t len, 
+                                     uint8_t **out_data, uint32_t* out_len, 
+                                     uint32_t seq) 
+{
+    ESP_LOGW( TAG, "Process dynamic message");   
+
+    // Process the received data
+    if (len != sizeof(mesh_dynamic_payload_t)) {
+        ESP_LOGW(TAG, "Received unexpected message size: %d", len);
+        printf(" Expected: %d\n", sizeof(mesh_static_payload_t));
+        printf("Data: ");
+        for (int i = 0; i < len; i++) {
+            printf("%02X ", data[i]);
+        }
+        printf("\n");
+        return ESP_FAIL;
+    }
+
+    mesh_dynamic_payload_t *received_payload = (mesh_dynamic_payload_t *)data;
+    ESP_LOGI(TAG, "Received dynamic payload from MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
+
+    //todo handle dynamic payload
+
+    return ESP_OK;
+}
+
+// process response to alert raw message - inside child
+static esp_err_t alert_to_root_raw_msg_response_process(uint8_t *data, uint32_t len, 
+                                     uint8_t **out_data, uint32_t* out_len, 
+                                     uint32_t seq) 
+{
+    //set static payload
+    ESP_LOGW( TAG, "Process alert message RESPONSE!");   
+
+    return ESP_OK;
+}
+
+// Process received alert raw messages - inside root
+static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len, 
+                                     uint8_t **out_data, uint32_t* out_len, 
+                                     uint32_t seq) 
+{
+    ESP_LOGW( TAG, "Process alert message");   
+
+    // Process the received data
+    if (len != sizeof(mesh_alert_payload_t)) {
+        ESP_LOGW(TAG, "Received unexpected message size: %d", len);
+        printf(" Expected: %d\n", sizeof(mesh_alert_payload_t));
+        printf("Data: ");
+        for (int i = 0; i < len; i++) {
+            printf("%02X ", data[i]);
+        }
+        printf("\n");
+        return ESP_FAIL;
+    }
+
+    mesh_alert_payload_t *received_payload = (mesh_alert_payload_t *)data;
+    ESP_LOGI(TAG, "Received alert payload from MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
+
+    //todo handle alert payload
+
+    return ESP_OK;
+}
+
+// process response to control raw message - inside root
+static esp_err_t control_to_child_raw_msg_response_process(uint8_t *data, uint32_t len, 
+                                     uint8_t **out_data, uint32_t* out_len, 
+                                     uint32_t seq) 
+{
+    //set static payload
+    ESP_LOGW( TAG, "Process control message RESPONSE!");   
+
+    return ESP_OK;
+}
+
+// Process received control raw messages - inside child
+static esp_err_t control_to_child_raw_msg_process(uint8_t *data, uint32_t len, 
+                                     uint8_t **out_data, uint32_t* out_len, 
+                                     uint32_t seq) 
+{
+    ESP_LOGW( TAG, "Process control message");   
+
+    // Process the received data
+    if (len != sizeof(mesh_alert_payload_t)) {
+        ESP_LOGW(TAG, "Received unexpected message size: %d", len);
+        printf(" Expected: %d\n", sizeof(mesh_alert_payload_t));
+        printf("Data: ");
+        for (int i = 0; i < len; i++) {
+            printf("%02X ", data[i]);
+        }
+        printf("\n");
+        return ESP_FAIL;
+    }
+
+    mesh_alert_payload_t *received_payload = (mesh_alert_payload_t *)data;
+    ESP_LOGI(TAG, "Received control payload from MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
+
+    //todo handle control payload
 
     return ESP_OK;
 }
@@ -160,7 +270,7 @@ static void send_message_to_root(uint8_t *data, size_t data_len)
 //* High level sending functions
 static void send_static_payload(void)
 {
-    wpt_static_payload_t static_payload = {
+    mesh_static_payload_t my_static_payload = {
                     .id = CONFIG_UNIT_ID,
                     .type = UNIT_ROLE, 
                     .OVERVOLTAGE_limit = OVERVOLTAGE_TX,
@@ -168,8 +278,8 @@ static void send_static_payload(void)
                     .OVERTEMPERATURE_limit = OVERTEMPERATURE_TX,
                     .FOD = FOD_ACTIVE
                 };
-    memcpy(static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
-    send_message_to_root((uint8_t*)&static_payload, sizeof(wpt_static_payload_t));
+    memcpy(my_static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
+    send_message_to_root((uint8_t*)&my_static_payload, sizeof(mesh_static_payload_t));
 }
 
 //*esp-NOW functions
@@ -236,7 +346,7 @@ static void espnow_data_prepare(espnow_data_t *buf, espnow_message_type type)
     switch (type)
     {
     case DATA_BROADCAST:
-        buf->field_1 = dynamic_payload.voltage;
+        buf->field_1 = self_dynamic_payload.voltage;
         ESP_LOGI(TAG, "Broadcast data voltage %.2f", buf->field_1);
         break;
 
@@ -246,18 +356,18 @@ static void espnow_data_prepare(espnow_data_t *buf, espnow_message_type type)
 
     case DATA_ALERT:
         // fill in alerts data
-        buf->field_1 = alert_payload.internal.overtemperature;
-        buf->field_2 = alert_payload.internal.overcurrent;
-        buf->field_3 = alert_payload.internal.overvoltage;
-        buf->field_4 = alert_payload.internal.F;
+        buf->field_1 = self_alert_payload.internal.overtemperature;
+        buf->field_2 = self_alert_payload.internal.overcurrent;
+        buf->field_3 = self_alert_payload.internal.overvoltage;
+        buf->field_4 = self_alert_payload.internal.F;
         break;
 
     case DATA_DYNAMIC:
         // fill in dynamic data
-        buf->field_1 = dynamic_payload.voltage;
-        buf->field_2 = dynamic_payload.current;
-        buf->field_3 = dynamic_payload.temp1;
-        buf->field_4 = dynamic_payload.temp2;
+        buf->field_1 = self_dynamic_payload.voltage;
+        buf->field_2 = self_dynamic_payload.current;
+        buf->field_3 = self_dynamic_payload.temp1;
+        buf->field_4 = self_dynamic_payload.temp2;
         break;
         
     default:
@@ -444,14 +554,14 @@ static void espnow_task(void *pvParameter)
                         ESP_LOGE(TAG, "Receive error data from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
                         break;
                     }
-                    espnow_data_t *recv_data = (espnow_data_t *)recv_cb->data;
-                    
+                    // Parse received ESPNOW data.
+                    espnow_data_t *recv_data = (espnow_data_t *)recv_cb->data; 
                     int8_t unitID = recv_data->id;
                     espnow_message_type msg_type = recv_data->type;
 
                     //ESP_LOGI(TAG, "Received ESP-NOW message with from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
 
-                    if (msg_type == DATA_BROADCAST) 
+                    if (msg_type == DATA_BROADCAST && (UNIT_ROLE == TX || is_root_node))
                     {
                         ESP_LOGI(TAG, "Receive broadcast data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
                         ESP_LOGI(TAG, "rx voltage %.2f", recv_data->field_1);
@@ -463,23 +573,26 @@ static void espnow_task(void *pvParameter)
                             //Case 2 - I am master TX - localization done (advise other TXs updating localization table)
                             if (is_root_node)
                             {
-                                ESP_LOGI(TAG, "RX has been located to the pad x!");
                                 // TX will tell the RX via ESP-NOW
-                                if (switchedON)
+                                if (switchedON) // todo: simulate sequential switching using GPIO and timers
                                 {
+                                    ESP_LOGI(TAG, "RX has been located to this TX (which is also the master)!");
                                     // Save peer and communicate via ESP-NOW
                                     add_peer_if_needed(recv_cb->mac_addr);
                                     // ask for dynamic data 
                                     espnow_send_message(DATA_ASK_DYNAMIC, recv_cb->mac_addr);
                                 }
-                                //else //todo advise other TX which then save the peer //p->position update
-
+                                else
+                                {
+                                    ESP_LOGI(TAG, "RX has been located to pad x!");
+                                    //todo (later to make it more robust) advise other TX which then save the peer //p->position update (for double check)
+                                }
                             }
                             //Case 3 - I am TX - am I active? yes then tell master - no then discard //todo later
                             else if (UNIT_ROLE == TX && switchedON) // todo add RX peer structure to keep track of it
                             {
                                 ESP_LOGI(TAG, "RX has been located to this pad!");
-                                //Advise master 
+                                //todo Advise master 
                                 // Save peer and communicate via ESP-NOW
                                 add_peer_if_needed(recv_cb->mac_addr);
                                 // ask for dynamic data 
@@ -511,7 +624,7 @@ static void espnow_task(void *pvParameter)
                     else if (msg_type == DATA_ALERT)
                     {
                         ESP_LOGI(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
-                        handle_peer_alert(recv_data, recv_cb->mac_addr);
+                        handle_peer_alert(recv_data, recv_cb->mac_addr); //todo
                     }
                     else
                         ESP_LOGI(TAG, "Receive unexpected message type %d data from: "MACSTR"", msg_type, MAC2STR(recv_cb->mac_addr));
@@ -534,13 +647,16 @@ static void espnow_task(void *pvParameter)
 
 static void wifi_mesh_lite_task(void *pvParameters)
 {
-    // Initialize peer management
-    peer_init();
-
     // Register rcv handlers
     esp_mesh_lite_raw_msg_action_t raw_actions[] = {
         { TO_ROOT_STATIC_MSG_ID, TO_ROOT_STATIC_MSG_ID_RESP, static_to_root_raw_msg_process},
-        { TO_ROOT_STATIC_MSG_ID_RESP, 0, raw_msg_process_response},
+        { TO_ROOT_STATIC_MSG_ID_RESP, 0, static_to_root_raw_msg_response_process},
+        { TO_ROOT_DYNAMIC_MSG_ID, TO_ROOT_DYNAMIC_MSG_ID_RESP, dynamic_to_root_raw_msg_process},
+        { TO_ROOT_DYNAMIC_MSG_ID_RESP, 0, dynamic_to_root_raw_msg_response_process},
+        { TO_ROOT_ALERT_MSG_ID, TO_ROOT_ALERT_MSG_ID_RESP, alert_to_root_raw_msg_process},
+        { TO_ROOT_ALERT_MSG_ID_RESP, 0, alert_to_root_raw_msg_response_process},
+        { TO_CHILD_CONTROL_MSG_ID, TO_CHILD_CONTROL_MSG_ID_RESP, control_to_child_raw_msg_process},
+        { TO_CHILD_CONTROL_MSG_ID_RESP, 0, control_to_child_raw_msg_response_process},
         {0, 0, NULL}
     };
     esp_mesh_lite_raw_msg_action_list_register(raw_actions);
@@ -552,6 +668,11 @@ static void wifi_mesh_lite_task(void *pvParameters)
             if (is_root_node)
             {
                 // take care of sequential switching during localization
+                if (atLeastOneRxNeedLocalization())
+                {
+
+
+                }
             }
             else
             {
@@ -613,6 +734,8 @@ static void print_system_info_timercb(TimerHandle_t timer)
         printf("%ld: %d, "MACSTR", %s\r\n" , loop + 1, node->node->level, MAC2STR(node->node->mac_addr), inet_ntoa(ip_struct));
         node = node->next;
     }
+
+    //todo back up - compare peer list with nodes list and eventually ask for static payload
 }
 
 static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
@@ -649,6 +772,9 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             // if not a root, send static payload to root
             if (!is_root_node && (memcmp(changed_node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)) {
                 send_static_payload();
+            } else if (is_root_node) { 
+                // Initialize peer management (adding myself)
+                peer_init();
             }
             break;
         default:

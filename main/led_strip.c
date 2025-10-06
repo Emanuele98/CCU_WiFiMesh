@@ -197,10 +197,9 @@ void install_strip(uint8_t pin)
 }
 
 
-void connected_leds(void *pvParameters)
+void connected_leds(TimerHandle_t xTimer)
 {
     /* BREATHING GREEN */
-
     if (strip_enable)
     {
         for (int j = 0; j <= N_LEDS; j++)
@@ -231,33 +230,9 @@ void connected_leds(void *pvParameters)
         }
 
     }
-
-    /* UKRAINE FLAG */
-    /*
-    if(strip_enable)
-    {   
-        if (blink1)
-        {            
-            for (int j = 0; j <= l1; j++) 
-                strip->set_pixel(strip, N_LEDS - j, 0, 150, 150);
-        } else
-        {
-            for (int j = 0; j <= l1; j++) 
-                strip->set_pixel(strip, N_LEDS - j, 150, 150, 0);
-        }
-        strip->refresh(strip, 10);  
-
-    if (l1==N_LEDS)
-    {
-        l1=0;
-        blink1 = !blink1;
-    } else 
-        l1++;
-    }  
-    */
 }
 
-void misaligned_leds(void *pvParameters)
+void misaligned_leds(TimerHandle_t xTimer)
 {
     if (strip_misalignment)
     {
@@ -273,7 +248,7 @@ void misaligned_leds(void *pvParameters)
     }
 }
 
-void charging_state(void *pvParameters)
+void charging_state(TimerHandle_t xTimer)
 {
     if (strip_charging)
     {

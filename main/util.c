@@ -14,6 +14,8 @@ bool rxLocalized = false;
 uint8_t rxDynTimeout = PEER_DYNAMIC_TIMER;
 EventGroupHandle_t eventGroupHandle;
 
+uint8_t self_mac[ETH_HWADDR_LEN] = {0};
+
 //* Global Alerts variables
 #if CONFIG_TX_UNIT
     float OVER_CURRENT = OVERCURRENT_TX;
