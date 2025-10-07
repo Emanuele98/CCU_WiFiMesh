@@ -41,6 +41,7 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_master_init());
 
     /* I2C scan to detect TX or RX */
+    /*
     i2c_scan_bus();
     if (i2c_device_present(T1_SENSOR_ADDR) || i2c_device_present(T2_SENSOR_ADDR)) {
         isTXUnit = false;
@@ -50,6 +51,7 @@ void app_main(void)
         isTXUnit = true;
         ESP_LOGI(TAG, "TX unit detected via I2C scan");
     }
+    */
     
     /* Initialize Hardware*/
     init_HW(isTXUnit);
@@ -72,9 +74,6 @@ void app_main(void)
         //1. sequential switching of TX (with delay) 
         //2. rx broadcast esp-now to signal rx voltage (LOC table shared)
 
-
-
-    //todo: localization - add espnow
 
     //todo: sensor monitoring
 

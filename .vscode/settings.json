@@ -1,6 +1,6 @@
 {
   "idf.flashType": "UART",
-  "idf.portWin": "COM14",
+  "idf.portWin": "COM3",
   "idf.openOcdConfigs": [
     "board/esp32c6-builtin.cfg"
   ],
@@ -24,6 +24,8 @@
     "led_strip.h": "c",
     "leds.h": "c",
     "cstdint": "c",
-    "stdint.h": "c"
+    "stdint.h": "c",
+    "gpio.h": "c",
+    "aux_ctu_hw.h": "c"
   }
 }

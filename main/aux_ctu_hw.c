@@ -7,6 +7,8 @@ TimerHandle_t connected_leds_timer, misaligned_leds_timer, charging_leds_timer, 
 
 static float last_duty_cycle = 0.30;
 
+stm32_command_t powerStatus = SWITCH_OFF;
+
 static const char* TAG = "HARDWARE";
 
 static void parse_received_UART(uint8_t *rx_uart)
@@ -189,6 +191,7 @@ esp_err_t write_STM_limits()
 
 esp_err_t write_STM_command(stm32_command_t command)
 {
+    /*
     //create json file
     cJSON *root = cJSON_CreateObject();
     if (command == SWITCH_ON)
@@ -210,6 +213,26 @@ esp_err_t write_STM_command(stm32_command_t command)
         return ESP_OK;
     else
         return ESP_FAIL;
+    */
+
+    //Simulate POWER
+    if (command == SWITCH_ON)
+    {
+        gpio_set_level(GPIO_OUTPUT_PIN, 1);
+        powerStatus = SWITCH_ON;
+    }
+    else if (command == SWITCH_OFF)
+    {
+        gpio_set_level(GPIO_OUTPUT_PIN, 0);
+        powerStatus = SWITCH_OFF;
+    }
+    else if (command == SWITCH_LOC)
+    {
+        gpio_set_level(GPIO_OUTPUT_PIN, 1); //no localization mode for now
+        powerStatus = SWITCH_LOC;
+    }
+
+    return ESP_OK;
 }
 
 void uart_init(void) {
@@ -229,8 +252,6 @@ void uart_init(void) {
 
 void TX_init_hw()
 {
-    esp_err_t err_code;
-
     //*LED STRIP
     install_strip(STRIP_PIN);
     ESP_LOGI(TAG, "LED strip initialized successfully");
@@ -258,10 +279,11 @@ void TX_init_hw()
     xTaskCreate(rx_task, "uart_rx_task", UART_TASK_STACK_SIZE, NULL, UART_TASK_PRIORITY, NULL);
 
     // safely switch off
-    err_code = write_STM_command(SWITCH_OFF);
-    if (err_code != ESP_OK)
-    {
-        ESP_LOGW(TAG, "Could not switch off STM32 board");
-        return;
-    }
+    ESP_ERROR_CHECK(write_STM_command(SWITCH_OFF));
+    ESP_ERROR_CHECK(write_STM_limits());
+
+    /** Simulate POWER */
+    // Reset and set GPIO as output
+    gpio_reset_pin(GPIO_OUTPUT_PIN);
+    gpio_set_direction(GPIO_OUTPUT_PIN, GPIO_MODE_INPUT_OUTPUT);
 }

@@ -14,8 +14,11 @@
 #define TO_ROOT_ALERT_MSG_ID                0x1004
 #define TO_ROOT_ALERT_MSG_ID_RESP           0x1005
 
-#define TO_CHILD_CONTROL_MSG_ID              0x1006
-#define TO_CHILD_CONTROL_MSG_ID_RESP         0x1007
+#define TO_ROOT_LOCALIZATION_ID             0x1006
+#define TO_ROOT_LOCALIZATION_ID_RESP        0x1007
+
+#define TO_CHILD_CONTROL_MSG_ID             0x1008
+#define TO_CHILD_CONTROL_MSG_ID_RESP        0x1009
 
 /* ESP-NOW*/
 #define ESPNOW_QUEUE_MAXDELAY               10000 //10 seconds

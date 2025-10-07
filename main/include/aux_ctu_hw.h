@@ -9,6 +9,9 @@
 #include "cJSON.h"
 #include "driver/uart.h"
 
+/** Simulate POWER */
+#define GPIO_OUTPUT_PIN    GPIO_NUM_10
+
 #define UART_BUFFER_SIZE                1024
 
 #define TXD_PIN                         (GPIO_NUM_4)
@@ -26,6 +29,8 @@ typedef enum
     SWITCH_LOC,
     SWITCH_ON,
 } stm32_command_t;
+
+extern stm32_command_t powerStatus;
 
 typedef enum 
 {

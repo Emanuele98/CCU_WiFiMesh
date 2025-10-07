@@ -36,6 +36,45 @@ void init_HW(bool isTX)
     }
 }
 
+void allLocalizationTxPeersOFF()
+{
+    struct TX_peer *p;
+    SLIST_FOREACH(p, &TX_peers, next) {
+        if (p->tx_status == TX_LOCALIZATION) {
+            p->tx_status = TX_OFF;
+        }
+    }
+}
+
+struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos) {
+    struct TX_peer *p;
+    struct TX_peer *first_available = NULL;
+    bool found_previous = (previousTX_pos == -1); // Start from beginning if no previous
+    
+    // Iterate through the list sequentially
+    SLIST_FOREACH(p, &TX_peers, next) {
+        if (p->tx_status == TX_OFF) {
+            // Store the first available TX for wrap-around
+            if (first_available == NULL) {
+                first_available = p;
+            }
+            
+            // If we've already passed the previous TX, return this one
+            if (found_previous) {
+                return p;
+            }
+        }
+        
+        // Mark when we've found and passed the previous TX
+        if (p->position == previousTX_pos) {
+            found_previous = true;
+        }
+    }
+    
+    // Wrap around: return the first available TX in the list
+    return first_available;
+}
+
 
 void peer_init()
 {
@@ -45,6 +84,7 @@ void peer_init()
     SLIST_INIT(&TX_peers);
     struct TX_peer *p = TX_peer_add(self_mac);
     if (p != NULL) {
+        ESP_LOGI(TAG, "Added self TX peer with ID %d", CONFIG_UNIT_ID);
         p->id = CONFIG_UNIT_ID;
         p->position = p->id; // Position same as ID for TX
     }

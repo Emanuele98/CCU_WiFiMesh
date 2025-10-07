@@ -84,6 +84,16 @@ typedef struct
 } mesh_alert_payload_t;
 
 /**
+ * @brief Payload for control and localization mesh lite messages
+ * 
+ */
+typedef struct
+{
+    uint8_t          macAddr[ETH_HWADDR_LEN]; /**< MAC Address of peer */
+    uint8_t          command;                  /* Command to be sent to STM32 */
+} mesh_control_payload_t;
+
+/**
  * @brief Tuning params structure for TX transitor waveforms
  * 
  */
@@ -236,5 +246,18 @@ void peer_delete(uint8_t *mac);
  * 
  */
 void delete_all_peers(void);
+
+/**
+ * @brief Update to OFF all TX peers available for localization
+ * 
+ */
+void allLocalizationTxPeersOFF();
+
+/**
+ * @brief Find the next TX peer for localization
+ * @param previousTX_pos Position of the previous TX peer used for localization
+ * @return struct TX_peer* Pointer to the next TX peer for localization
+ */
+struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos);
 
 #endif /* PEER_H */
