@@ -8,11 +8,8 @@ typedef enum {
     RX         //RX UNIT
 } peer_type;
 
-#if CONFIG_TX_UNIT
-    #define UNIT_ROLE TX
-#else // CONFIG_RX_UNIT
-    #define UNIT_ROLE RX
-#endif
+extern peer_type UNIT_ROLE;
+
 typedef enum {
     TX_OFF,                //when the pad is off
     TX_LOCALIZATION,       //when the pad is active for localization (soft duty cycle thresholds) 
@@ -159,6 +156,13 @@ extern mesh_static_payload_t self_static_payload;
 extern mesh_dynamic_payload_t self_dynamic_payload;
 extern mesh_alert_payload_t self_alert_payload;
 extern mesh_tuning_params_t self_tuning_params;
+
+/**
+ * @brief Initialize hardware components
+ * 
+ * @param isTX True if initializing TX components, false for RX
+ */
+void init_HW(bool isTX);
 
 /**
  * @brief Check if at least one RX was not localized yet, and at least one TX pad is available

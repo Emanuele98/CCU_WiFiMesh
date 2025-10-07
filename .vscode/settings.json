@@ -20,6 +20,10 @@
   "idf.pythonInstallPath": "C:\\Users\\degan\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
   "files.associations": {
     "esp_bridge.h": "c",
-    "cjson.h": "c"
+    "cjson.h": "c",
+    "led_strip.h": "c",
+    "leds.h": "c",
+    "cstdint": "c",
+    "stdint.h": "c"
   }
 }

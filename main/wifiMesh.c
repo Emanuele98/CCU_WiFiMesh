@@ -676,23 +676,25 @@ static void wifi_mesh_lite_task(void *pvParameters)
             }
             else
             {
-                #if CONFIG_TX_UNIT
-                // dynamic payload upon changes
-
-                #else
-                if (!rxLocalized)
+                if(UNIT_ROLE == TX)
                 {
-                    //espnow broadcast when voltage rises
-                    xEventGroupWaitBits(eventGroupHandle, BIT0, pdTRUE, pdFALSE, 5000);
-                    espnow_send_message(DATA_BROADCAST, broadcast_mac);
+                    // dynamic payload upon changes
                 }
                 else
                 {
-                    //espnow send dynamic payload upon changes or min time
-                    espnow_send_message(DATA_DYNAMIC, parent_mac);
-                    vTaskDelay(rxDynTimeout*1000); //todo: based on voltage rises
+                    if (!rxLocalized)
+                    {
+                        //espnow broadcast when voltage rises
+                        xEventGroupWaitBits(eventGroupHandle, BIT0, pdTRUE, pdFALSE, 5000);
+                        espnow_send_message(DATA_BROADCAST, broadcast_mac);
+                    }
+                    else
+                    {
+                        //espnow send dynamic payload upon changes or min time
+                        espnow_send_message(DATA_DYNAMIC, parent_mac);
+                        vTaskDelay(rxDynTimeout*1000); //todo: based on voltage rises
+                    }
                 }
-                #endif
             } 
         }
         vTaskDelay(pdMS_TO_TICKS(50)); // Delay for 50ms
@@ -873,17 +875,17 @@ void wifi_mesh_init()
     esp_mesh_lite_init(&mesh_lite_config);
 
     /*
-    #if CONFIG_TX_UNIT
+    if(IS_TX_UNIT)
         esp_mesh_lite_set_allowed_level(1); //! The mesh needs at least one node explicitly configured as root (level 1) for NO ROUTER configuration 
-    #endif
     */
 
-    #if CONFIG_RX_UNIT
+    if(UNIT_ROLE == RX)
+    {
         esp_mesh_lite_set_disallowed_level(1);
         //esp_mesh_lite_set_disallowed_level(2); (more than 10 TXs)
         //esp_mesh_lite_set_disallowed_level(3); (more than 100 TXs)
         esp_mesh_lite_set_leaf_node(true);
-    #endif
+    }
 
     // Set SoftAP info
     app_wifi_set_softap_info();

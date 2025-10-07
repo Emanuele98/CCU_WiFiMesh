@@ -219,12 +219,12 @@ void RX_init_hw(void)
     ESP_LOGI(TAG, "I2C initialized - temperature sensors");
 
     uint8_t err;
-    //err = xTaskCreate(get_temp, "get_temp", 4096, NULL, 5, NULL);
-    //if ( err != pdPASS )
-    //{
-    //    ESP_LOGE(TAG, "Task get_temp was not created successfully");
-    //    return;
-    //}
+    err = xTaskCreate(get_temp, "get_temp", 4096, NULL, 5, NULL);
+    if ( err != pdPASS )
+    {
+        ESP_LOGE(TAG, "Task get_temp was not created successfully");
+        return;
+    }
     
     err = xTaskCreate(get_adc, "get_adc", 8192, NULL, 5, NULL);  // Priority 5 is fine
     if( err != pdPASS )

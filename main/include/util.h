@@ -9,6 +9,7 @@
 #include "nvs_flash.h"
 #include <sys/queue.h>
 #include <sys/time.h>
+#include "driver/i2c.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -35,6 +36,9 @@
 #include "esp_bridge.h"
 #include "esp_mesh_lite.h"
 
+#include "aux_ctu_hw.h"
+#include "cru_hw.h"
+
 /* MISALIGNMENT LIMITS */
 #define SCOOTER_LEFT_LIMIT                  10
 #define MISALIGNED_LIMIT                    50
@@ -57,7 +61,7 @@
 #define UART_TX_DELAY                       100     //milliseconds
 
 /* DYNAMIC PAYLOAD MAX TIMING */
-#define PEER_DYNAMIC_TIMER                  10    //30s
+#define PEER_DYNAMIC_TIMER                  10      //30s
 
 /* ESPNOW MESSAGES */
 #define ALERT_MESSAGE                       0x99
@@ -73,6 +77,27 @@
 
 /* FOD_CLEAR_TIMEOUT */
 #define FOD_CLEAR_TIMEOUT                   4000     //2 seconds
+
+/* I2C CONFIGURATION */
+#define I2C_MASTER_SCL_IO                   19                   /*!< gpio number for I2C master clock */
+#define I2C_MASTER_SDA_IO                   18                   /*!< gpio number for I2C master data  */
+
+#define I2C_MASTER_NUM                      I2C_NUM_0            /*!< I2C port number for master dev */
+#define I2C_MASTER_FREQ_HZ                  400000               /*!< I2C master clock frequency */
+
+#define V_A_SENSOR_ADDR                     0x40  /*!< slave address for voltage and current sensor */
+#define T1_SENSOR_ADDR                      0x48  /*!< slave address for first temperature sensor */
+#define T2_SENSOR_ADDR                      0x49  /*!< slave address for second temperature sensor */
+#define V_REGISTER_ADDR                     0x02  /* bus voltage register address */
+#define A_REGISTER_ADDR                     0x01  /* shunt register address */
+#define T_REGISTER_ADDR                     0x00  /* temperature register address */
+
+#define WRITE_BIT                           I2C_MASTER_WRITE     /*!< I2C master write */
+#define READ_BIT                            I2C_MASTER_READ      /*!< I2C master read */
+#define ACK_CHECK_EN                        0x1                  /*!< I2C master will check ack from slave*/
+#define ACK_CHECK_DIS                       0x0                  /*!< I2C master will not check ack from slave */
+#define ACK_VAL                             0x0                  /*!< I2C ack value */
+#define NACK_VAL                            0x1                  /*!< I2C nack value */
 
 //* Global Alerts variables
 extern float OVER_CURRENT;
@@ -104,5 +129,23 @@ extern uint8_t self_mac[ETH_HWADDR_LEN];
  * 
  */
 void init_NVS(void);
+
+/**
+ * @brief Scan the I2C bus and print all found devices
+ * 
+ */
+void i2c_scan_bus(void);
+
+/**
+ * @brief Check if an I2C device is present at the given address
+ * @param device_addr 7-bit I2C device address
+ * @return true if device is present, false otherwise
+ */
+bool i2c_device_present(uint8_t device_addr);
+
+/**
+ * @brief Initialize I2C master
+ */
+esp_err_t i2c_master_init(void);
 
 #endif // UTIL_H

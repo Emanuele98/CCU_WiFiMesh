@@ -10,6 +10,33 @@ mesh_dynamic_payload_t self_dynamic_payload;
 mesh_alert_payload_t self_alert_payload;
 mesh_tuning_params_t self_tuning_params;
 
+peer_type UNIT_ROLE;
+
+void init_HW(bool isTX)
+{
+    if (isTX) 
+    {
+        UNIT_ROLE = TX;
+        OVER_CURRENT = OVERCURRENT_TX;
+        OVER_TEMPERATURE = OVERTEMPERATURE_TX;
+        OVER_VOLTAGE = OVERVOLTAGE_TX;
+        FOD = FOD_ACTIVE;
+        FULLY_CHARGED = false;
+        TX_init_hw();
+    }
+    else
+    {
+        UNIT_ROLE = RX;
+        OVER_CURRENT = OVERCURRENT_RX;
+        OVER_TEMPERATURE = OVERTEMPERATURE_RX;
+        OVER_VOLTAGE = OVERVOLTAGE_RX;
+        FOD = FOD_ACTIVE;
+        FULLY_CHARGED = false;
+        RX_init_hw();
+    }
+}
+
+
 void peer_init()
 {
     delete_all_peers();

@@ -1,13 +1,11 @@
-#ifndef __PRU_HW_H__
-#define __PRU_HW_H__
+#ifndef __CTU_HW_H__
+#define __CTU_HW_H__
 
 #include "util.h"
 #include "peer.h"
 
-
-#include "driver/i2c.h"
 #include "driver/gpio.h"
-#include "led_strip.h"
+#include "leds.h"
 #include "cJSON.h"
 #include "driver/uart.h"
 
@@ -53,9 +51,5 @@ esp_err_t write_STM_command(stm32_command_t command);
  * @brief Send the ALERTS limits to the STM32
 */
 esp_err_t write_STM_limits();
-
-
-
-
 
 #endif

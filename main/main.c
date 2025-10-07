@@ -1,10 +1,5 @@
 #include "wifiMesh.h"
 #include "peer.h"
-#if CONFIG_TX_UNIT
-    #include "aux_ctu_hw.h"
-#else
-    #include "cru_hw.h"
-#endif
 
 static const char *TAG = "MAIN";
 
@@ -25,6 +20,8 @@ void print_firmware_version(void)
 
 void app_main(void)
 {
+    bool isTXUnit = true; //default
+
     print_firmware_version();
 
     esp_log_level_set("*", ESP_LOG_INFO);
@@ -40,12 +37,22 @@ void app_main(void)
     /* Init values on NVS */ 
     init_NVS();
 
-    /* Initialize Hardware */
-    #if CONFIG_TX_UNIT
-        TX_init_hw();
-    #else
-        RX_init_hw();
-    #endif
+    /* Initialize I2C component */
+    ESP_ERROR_CHECK(i2c_master_init());
+
+    /* I2C scan to detect TX or RX */
+    i2c_scan_bus();
+    if (i2c_device_present(T1_SENSOR_ADDR) || i2c_device_present(T2_SENSOR_ADDR)) {
+        isTXUnit = false;
+        ESP_LOGI(TAG, "RX unit detected via I2C scan");
+    }
+    else {
+        isTXUnit = true;
+        ESP_LOGI(TAG, "TX unit detected via I2C scan");
+    }
+    
+    /* Initialize Hardware*/
+    init_HW(isTXUnit);
 
     /* Initialize WiFi Mesh */
     wifi_mesh_init();
