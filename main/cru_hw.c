@@ -128,7 +128,7 @@ static void get_adc(void *pvParameters)
             ch3_sum += ch3_raw;
             
             // Average every 50 samples
-            if (read_success >= 50) {
+            if (read_success >= 10) {
                 int ch2_avg = ch2_sum / read_success;
                 int ch3_avg = ch3_sum / read_success;
                 
@@ -142,12 +142,12 @@ static void get_adc(void *pvParameters)
                     self_dynamic_payload.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
                     
                     //ESP_LOGI(TAG, "Ch2: %.3fV --> Voltage: %.3f, Ch3: %.3fV --> Current: %.3f", 
-                    //    ch2_voltage_mv/1000.0f, self_dynamic_payload.voltage, 
+                    //   ch2_voltage_mv/1000.0f, self_dynamic_payload.voltage, 
                     //    ch3_voltage_mv/1000.0f, self_dynamic_payload.current);
                 }
 
                 if (self_dynamic_payload.voltage > MIN_RX_VOLTAGE) {
-                    xEventGroupSetBits(eventGroupHandle, BIT0);
+                    xEventGroupSetBits(eventGroupHandle, LOCALIZEDBIT);
                 }
                 
                 // Log stats every 1000 cycles (~100 seconds at 1kHz effective)

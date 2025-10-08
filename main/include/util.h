@@ -53,7 +53,7 @@
 #define OVERCURRENT_RX                      2
 #define OVERVOLTAGE_RX                      100
 #define OVERTEMPERATURE_RX                  60
-#define MIN_RX_VOLTAGE                      50
+#define MIN_RX_VOLTAGE                      100 // 50
 
 /* LOC TIMING */
 #define REACTION_TIME                       1000    //milliseconds
@@ -98,6 +98,10 @@
 #define ACK_CHECK_DIS                       0x0                  /*!< I2C master will not check ack from slave */
 #define ACK_VAL                             0x0                  /*!< I2C ack value */
 #define NACK_VAL                            0x1                  /*!< I2C nack value */
+
+#define MESH_FORMEDBIT                      BIT0
+#define LOCALIZEDBIT                        BIT1
+
 
 //* Global Alerts variables
 extern float OVER_CURRENT;

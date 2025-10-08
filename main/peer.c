@@ -12,11 +12,10 @@ mesh_tuning_params_t self_tuning_params;
 
 peer_type UNIT_ROLE;
 
-void init_HW(bool isTX)
+void init_HW()
 {
-    if (isTX) 
+    if (UNIT_ROLE == TX) 
     {
-        UNIT_ROLE = TX;
         OVER_CURRENT = OVERCURRENT_TX;
         OVER_TEMPERATURE = OVERTEMPERATURE_TX;
         OVER_VOLTAGE = OVERVOLTAGE_TX;
@@ -26,7 +25,6 @@ void init_HW(bool isTX)
     }
     else
     {
-        UNIT_ROLE = RX;
         OVER_CURRENT = OVERCURRENT_RX;
         OVER_TEMPERATURE = OVERTEMPERATURE_RX;
         OVER_VOLTAGE = OVERVOLTAGE_RX;

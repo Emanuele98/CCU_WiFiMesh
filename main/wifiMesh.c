@@ -34,7 +34,7 @@ static esp_err_t static_to_root_raw_msg_response_process(uint8_t *data, uint32_t
                                      uint32_t seq) 
 {
     //set static payload
-    ESP_LOGW( TAG, "Process static message RESPONSE!");   
+    //ESP_LOGW( TAG, "Process static message RESPONSE!");   
 
     // Process the received data
     if (len != sizeof(mesh_static_payload_t)) {
@@ -139,7 +139,7 @@ static esp_err_t dynamic_to_root_raw_msg_response_process(uint8_t *data, uint32_
                                      uint32_t seq) 
 {
     //set static payload
-    ESP_LOGW( TAG, "Process dynamic message RESPONSE!");   
+    //ESP_LOGW( TAG, "Process dynamic message RESPONSE!");   
 
     return ESP_OK;
 }
@@ -177,7 +177,7 @@ static esp_err_t alert_to_root_raw_msg_response_process(uint8_t *data, uint32_t 
                                      uint32_t seq) 
 {
     //set static payload
-    ESP_LOGW( TAG, "Process alert message RESPONSE!");   
+    //ESP_LOGW( TAG, "Process alert message RESPONSE!");   
 
     return ESP_OK;
 }
@@ -215,7 +215,7 @@ static esp_err_t control_to_child_raw_msg_response_process(uint8_t *data, uint32
                                      uint32_t seq) 
 {
     //set static payload
-    ESP_LOGW( TAG, "Process control message RESPONSE!");   
+    //ESP_LOGW( TAG, "Process control message RESPONSE!");   
 
     return ESP_OK;
 }
@@ -225,7 +225,7 @@ static esp_err_t control_to_child_raw_msg_process(uint8_t *data, uint32_t len,
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    ESP_LOGW( TAG, "Process control message");   
+    //ESP_LOGW( TAG, "Process control message");   
 
     // Process the received data
     if (len != sizeof(mesh_control_payload_t)) {
@@ -240,7 +240,7 @@ static esp_err_t control_to_child_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_control_payload_t *received_payload = (mesh_control_payload_t *)data;
-    ESP_LOGI(TAG, "Received control payload for MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
+    //ESP_LOGI(TAG, "Received control payload for MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
 
     stm32_command_t command = (stm32_command_t)received_payload->command;
 
@@ -251,7 +251,7 @@ static esp_err_t control_to_child_raw_msg_process(uint8_t *data, uint32_t len,
     }
     else if (memcmp(received_payload->macAddr, self_mac, ETH_HWADDR_LEN) == 0)
     {
-        ESP_LOGI(TAG, "Control message is for this unit");
+        //ESP_LOGI(TAG, "Control message is for this unit");
         if (command == SWITCH_ON)
         {
             ESP_LOGI(TAG, "Received command to SWITCH ON");
@@ -284,9 +284,9 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
     ESP_LOGW( TAG, "Process localization message");   
 
     // Process the received data
-    if (len != sizeof(mesh_control_payload_t)) {
+    if (len != sizeof(mesh_localization_payload_t)) {
         ESP_LOGW(TAG, "Received unexpected message size: %d", len);
-        printf(" Expected: %d\n", sizeof(mesh_control_payload_t));
+        printf(" Expected: %d\n", sizeof(mesh_localization_payload_t));
         printf("Data: ");
         for (int i = 0; i < len; i++) {
             printf("%02X ", data[i]);
@@ -295,12 +295,12 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
                 return ESP_FAIL;
     }
 
-    mesh_control_payload_t *received_payload = (mesh_control_payload_t *)data;
+    mesh_localization_payload_t *received_payload = (mesh_localization_payload_t *)data;
 
     struct RX_peer *p = RX_peer_find_by_mac(received_payload->macAddr);
     if (p != NULL)
     {
-        p->position = received_payload->command; //use command field to send position
+        p->position = received_payload->position;
         ESP_LOGI(TAG, "RX Peer ID %d localized at position %d", p->id, p->position);
     }
 
@@ -310,7 +310,7 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
 // Send Static message to Root
 static void send_static_message_to_root(uint8_t *data, size_t data_len) 
 {
-    ESP_LOGE( TAG, "Sending message to Root");    
+    //ESP_LOGW( TAG, "Sending message to Root");    
     
     esp_mesh_lite_msg_config_t config = {
         .raw_msg = {
@@ -330,7 +330,7 @@ static void send_static_message_to_root(uint8_t *data, size_t data_len)
 // Send Localization message to Root
 static void send_localization_message_to_root(uint8_t *data, size_t data_len) 
 {
-    ESP_LOGE( TAG, "Sending localization message to Root");    
+    //ESP_LOGW( TAG, "Sending localization message to Root");    
     
     esp_mesh_lite_msg_config_t config = {
         .raw_msg = {
@@ -350,7 +350,7 @@ static void send_localization_message_to_root(uint8_t *data, size_t data_len)
 // Send Control message to Child
 static void send_control_message_to_child(uint8_t *data, size_t data_len) 
 {
-    ESP_LOGE( TAG, "Sending message to Child");    
+    //ESP_LOGW( TAG, "Sending message to Child");    
     
     esp_mesh_lite_msg_config_t config = {
         .raw_msg = {
@@ -369,13 +369,13 @@ static void send_control_message_to_child(uint8_t *data, size_t data_len)
 
 //* High level sending functions
 
-static void send_localization_payload(uint8_t position, uint8_t *mac)
+static void send_localization_payload(uint8_t pos, uint8_t *mac)
 {
-    mesh_control_payload_t my_localization_payload = {
-        .command = position,
+    mesh_localization_payload_t my_localization_payload = {
+        .position = pos,
         };
     memcpy(my_localization_payload.macAddr, mac, ETH_HWADDR_LEN);
-    send_localization_message_to_root((uint8_t*)&my_localization_payload, sizeof(mesh_control_payload_t));
+    send_localization_message_to_root((uint8_t*)&my_localization_payload, sizeof(mesh_localization_payload_t));
 }
 
 static void send_control_payload(stm32_command_t command, uint8_t *mac)
@@ -675,7 +675,7 @@ static void espnow_task(void *pvParameter)
                     }
                     // Parse received ESPNOW data.
                     espnow_data_t *recv_data = (espnow_data_t *)recv_cb->data; 
-                    int8_t unitID = recv_data->id;
+                    //int8_t unitID = recv_data->id;
                     espnow_message_type msg_type = recv_data->type;
 
                     //ESP_LOGI(TAG, "Received ESP-NOW message with from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
@@ -709,7 +709,7 @@ static void espnow_task(void *pvParameter)
                                 }
                                 else
                                 {
-                                    //ESP_LOGI(TAG, "RX has been located to pad x!");
+                                    ESP_LOGI(TAG, "RX has been located to pad x!");
                                     //todo (later to make it more robust) advise other TX which then save the peer //p->position update (for double check)
                                 }
                             }
@@ -770,14 +770,14 @@ static void espnow_task(void *pvParameter)
     free(espnow_data);
 }
 
-static int8_t pass_the_baton(int8_t previousTX_pos)
+static void pass_the_baton(int8_t *previousTX_pos)
 {
     // Find next available TX for localization
     // If pos equal to self-pos, use local switch on function 
     // otherwise, Put its MAC address in control payload to address him only (mesh-lite command)
     // Switch it ON and update list structures
 
-    struct TX_peer* p = find_next_TX_for_localization(previousTX_pos);
+    struct TX_peer* p = find_next_TX_for_localization(*previousTX_pos);
     p->tx_status = TX_LOCALIZATION;
 
     if(p->position == CONFIG_UNIT_ID)
@@ -791,12 +791,13 @@ static int8_t pass_the_baton(int8_t previousTX_pos)
         send_control_payload(SWITCH_LOC, p->MACaddress);
     }
 
-    return p->position;
+    *previousTX_pos = p->position;
 }
 
 static void reset_the_baton()
 {
     // switch all TX available for localization OFF (mesh-lite and local switch off)
+    send_control_payload(SWITCH_OFF, broadcast_mac); //broadcast
     write_STM_command(SWITCH_OFF);
 
     // update list structures
@@ -814,15 +815,15 @@ static void wifi_mesh_lite_task(void *pvParameters)
         { TO_ROOT_DYNAMIC_MSG_ID_RESP, 0, dynamic_to_root_raw_msg_response_process},
         { TO_ROOT_ALERT_MSG_ID, TO_ROOT_ALERT_MSG_ID_RESP, alert_to_root_raw_msg_process},
         { TO_ROOT_ALERT_MSG_ID_RESP, 0, alert_to_root_raw_msg_response_process},
-        { TO_CHILD_CONTROL_MSG_ID, TO_CHILD_CONTROL_MSG_ID_RESP, control_to_child_raw_msg_process},
-        { TO_CHILD_CONTROL_MSG_ID_RESP, 0, control_to_child_raw_msg_response_process},
         { TO_ROOT_LOCALIZATION_ID, TO_ROOT_LOCALIZATION_ID_RESP, localization_to_root_raw_msg_process}, 
         { TO_ROOT_LOCALIZATION_ID_RESP, 0, localization_to_root_raw_msg_process_response},
+        { TO_CHILD_CONTROL_MSG_ID, TO_CHILD_CONTROL_MSG_ID_RESP, control_to_child_raw_msg_process},
+        { TO_CHILD_CONTROL_MSG_ID_RESP, 0, control_to_child_raw_msg_response_process},
         {0, 0, NULL}
     };
     esp_mesh_lite_raw_msg_action_list_register(raw_actions);
 
-    static int previousTX_position = -1;
+    static int8_t previousTX_position = -1;
 
     while (1) 
     {
@@ -834,11 +835,11 @@ static void wifi_mesh_lite_task(void *pvParameters)
                 if (atLeastOneRxNeedLocalization())
                 {
                     //pass the baton
-                    previousTX_position = pass_the_baton(previousTX_position);
-                    vTaskDelay(pdMS_TO_TICKS(50)); // Delay for 50ms
+                    pass_the_baton(&previousTX_position);
+                    vTaskDelay(pdMS_TO_TICKS(100)); // Delay 
                     //switch off 
                     reset_the_baton();
-                    vTaskDelay(pdMS_TO_TICKS(50)); // Delay for 50ms
+                    vTaskDelay(pdMS_TO_TICKS(100)); // Delay
                 }
                 //todo dynamic data collection / local alerts handling? (separate task takes care of mqtt based on changes)
             }
@@ -854,7 +855,7 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     if (!rxLocalized)
                     {
                         //espnow broadcast when voltage rises
-                        xEventGroupWaitBits(eventGroupHandle, BIT0, pdTRUE, pdFALSE, portMAX_DELAY);
+                        xEventGroupWaitBits(eventGroupHandle, LOCALIZEDBIT, pdTRUE, pdFALSE, portMAX_DELAY);
                         espnow_send_message(DATA_BROADCAST, broadcast_mac);
                     }
                     else
@@ -872,81 +873,165 @@ static void wifi_mesh_lite_task(void *pvParameters)
     vTaskDelete(NULL);
 }
  
-static void print_system_info_timercb(TimerHandle_t timer)
+static void handle_mesh_changes_timercb(TimerHandle_t timer)
 {
-    uint8_t primary                 = 0;
-    uint8_t sta_mac[6]              = {0};
-    wifi_ap_record_t ap_info        = {0};
-    wifi_second_chan_t second       = 0;
-    wifi_sta_list_t wifi_sta_list   = {0x0};
-
-    if (esp_mesh_lite_get_level() > 1) {
-        esp_wifi_sta_get_ap_info(&ap_info);
-    }
+    uint8_t sta_mac[6] = {0};
     esp_wifi_get_mac(ESP_IF_WIFI_STA, sta_mac);
-    esp_wifi_ap_get_sta_list(&wifi_sta_list);
-    esp_wifi_get_channel(&primary, &second);
 
-    ESP_LOGI(TAG, "System information, channel: %d, layer: %d, self mac: " MACSTR ", parent bssid: " MACSTR
-                ", parent rssi: %d, free heap: %"PRIu32"", primary,
-                esp_mesh_lite_get_level(), MAC2STR(sta_mac), MAC2STR(ap_info.bssid),
-                (ap_info.rssi != 0 ? ap_info.rssi : -120), esp_get_free_heap_size());
+    ESP_LOGI(TAG, "System information -- layer: %d, self mac: " MACSTR "", 
+             esp_mesh_lite_get_level(), MAC2STR(sta_mac));
 
-    for (int i = 0; i < wifi_sta_list.num; i++) {
-        ESP_LOGI(TAG, "Child mac: " MACSTR, MAC2STR(wifi_sta_list.sta[i].mac));
+    // Static variables to track previous state
+    static esp_mesh_lite_node_info_t *previous_nodes = NULL;
+    static uint32_t previous_size = 0;
+    static bool first_run = true;
+
+    // Get current node list
+    uint32_t current_size = 0;
+    const node_info_list_t *node = esp_mesh_lite_get_nodes_list(&current_size);
+    
+    printf("MeshLite nodes %ld:\r\n", current_size);
+
+    // Build current snapshot while printing (single pass)
+    esp_mesh_lite_node_info_t *current_nodes = NULL;
+    if (current_size > 0) {
+        current_nodes = (esp_mesh_lite_node_info_t *)malloc(sizeof(esp_mesh_lite_node_info_t) * current_size);
+        if (current_nodes == NULL) {
+            ESP_LOGE(TAG, "Failed to allocate memory for current node snapshot");
+            return; // Keep previous state, retry next time
+        }
+
+        const node_info_list_t *temp_node = node;
+        for (uint32_t i = 0; i < current_size && temp_node != NULL; i++) {
+            // Copy node data
+            memcpy(&current_nodes[i], temp_node->node, sizeof(esp_mesh_lite_node_info_t));
+            
+            // Print node info
+            struct in_addr ip_struct;
+            ip_struct.s_addr = temp_node->node->ip_addr;
+            printf(" Level: %d -- MAC: " MACSTR " -- IP: %s -- TTL: %ld\r\n", 
+                   temp_node->node->level, MAC2STR(temp_node->node->mac_addr), 
+                   inet_ntoa(ip_struct), temp_node->ttl);
+            
+            temp_node = temp_node->next;
+        }
     }
 
-    uint32_t size = 0;
-    const node_info_list_t *node = esp_mesh_lite_get_nodes_list(&size);
-    printf("MeshLite nodes %ld:\r\n", size);
-    for (uint32_t loop = 0; (loop < size) && (node != NULL); loop++) {
-        struct in_addr ip_struct;
-        ip_struct.s_addr = node->node->ip_addr;
-        printf("%ld: %d, "MACSTR", %s\r\n" , loop + 1, node->node->level, MAC2STR(node->node->mac_addr), inet_ntoa(ip_struct));
-        node = node->next;
+    // Detect changes
+    bool nodes_changed = false;
+    
+    if (first_run) {
+        nodes_changed = (current_size > 0);
+        first_run = false;
+        ESP_LOGI(TAG, "First run - %ld nodes discovered", current_size);
+    } else if (current_size != previous_size) {
+        nodes_changed = true;
+        ESP_LOGI(TAG, "Node count changed: %ld -> %ld", previous_size, current_size);
+    } else if (current_size > 0 && previous_nodes != NULL && current_nodes != NULL) {
+        // Same size - use optimized comparison with early exit
+        // Check for new/changed nodes
+        for (uint32_t i = 0; i < current_size && !nodes_changed; i++) {
+            bool found = false;
+            for (uint32_t j = 0; j < previous_size; j++) {
+                if (memcmp(current_nodes[i].mac_addr, previous_nodes[j].mac_addr, ETH_HWADDR_LEN) == 0) {
+                    found = true;
+                    // Check if properties changed
+                    if (current_nodes[i].ip_addr != previous_nodes[j].ip_addr) {
+                        ESP_LOGI(TAG, "Node " MACSTR " IP changed", MAC2STR(current_nodes[i].mac_addr));
+                        nodes_changed = true;
+                    } else if (current_nodes[i].level != previous_nodes[j].level) {
+                        ESP_LOGI(TAG, "Node " MACSTR " level changed: %d -> %d", 
+                                MAC2STR(current_nodes[i].mac_addr), previous_nodes[j].level, current_nodes[i].level);
+                        nodes_changed = true;
+                    }
+                    break;
+                }
+            }
+            if (!found) {
+                ESP_LOGI(TAG, "New node joined: " MACSTR, MAC2STR(current_nodes[i].mac_addr));
+                nodes_changed = true;
+            }
+        }
+        
+        // Check for removed nodes (only if no changes found yet)
+        if (!nodes_changed) {
+            for (uint32_t i = 0; i < previous_size; i++) {
+                bool found = false;
+                for (uint32_t j = 0; j < current_size; j++) {
+                    if (memcmp(previous_nodes[i].mac_addr, current_nodes[j].mac_addr, ETH_HWADDR_LEN) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    ESP_LOGI(TAG, "Node left: " MACSTR, MAC2STR(previous_nodes[i].mac_addr));
+                    nodes_changed = true;
+                    break; // Early exit
+                }
+            }
+        }
     }
 
-    //todo back up - compare peer list with nodes list and eventually ask for static payload
+    // Handle detected changes
+    if (nodes_changed) {
+        ESP_LOGW(TAG, "Mesh topology changed - handling updates");
+        
+        // Your business logic here
+        // bool is_root_node = (esp_mesh_lite_get_level() == 1);
+        // if (!is_root_node) {
+        //     send_static_payload();
+        // } else {
+        //     peer_init();
+        // }
+    }
+
+    // Update snapshot - just swap pointers
+    if (previous_nodes != NULL) {
+        free(previous_nodes);
+    }
+    previous_nodes = current_nodes;
+    previous_size = current_size;
 }
+
 
 static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
                                         int32_t event_id, void *event_data)
 {
+    esp_mesh_lite_node_info_t *node_info = (esp_mesh_lite_node_info_t *)event_data;
+
     switch (event_id)
     {
         case ESP_MESH_LITE_EVENT_NODE_JOIN:
             ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_NODE_JOIN>");
-            esp_mesh_lite_node_info_t *node_info = (esp_mesh_lite_node_info_t *)event_data;
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
-            mesh_level = esp_mesh_lite_get_level();
-            is_root_node = (mesh_level == 1);
             is_mesh_connected = true;
-            // if not a root, send static payload to root
-            if (!is_root_node /*&& (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)*/) {
+            if (!is_root_node && (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)) {
                 send_static_payload();
             }
             break;
         case ESP_MESH_LITE_EVENT_NODE_LEAVE:
             ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
-            esp_mesh_lite_node_info_t *left_node_info = (esp_mesh_lite_node_info_t *)event_data;
-            ESP_LOGI(TAG, "Node left: Level %d, MAC: "MACSTR", IP: %s", left_node_info->level, MAC2STR(left_node_info->mac_addr), inet_ntoa(left_node_info->ip_addr));
+            ESP_LOGI(TAG, "Node left: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             // Remove node from list
             break;
         case ESP_MESH_LITE_EVENT_NODE_CHANGE:
             ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_NODE_CHANGE>");
             // NEW LEVEL OR IP ADDRESS
-            esp_mesh_lite_node_info_t *changed_node_info = (esp_mesh_lite_node_info_t *)event_data;
-            ESP_LOGI(TAG, "Node changed: Level %d, MAC: "MACSTR", IP: %s", changed_node_info->level, MAC2STR(changed_node_info->mac_addr), inet_ntoa(changed_node_info->ip_addr));
+            ESP_LOGI(TAG, "Node changed: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
+            xEventGroupSetBits(eventGroupHandle, MESH_FORMEDBIT);
             mesh_level = esp_mesh_lite_get_level();
             is_root_node = (mesh_level == 1);
             is_mesh_connected = true;
             // if not a root, send static payload to root
-            if (!is_root_node /*&& (memcmp(changed_node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)*/) {
+            if (!is_root_node && (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)) {
                 send_static_payload();
             } else if (is_root_node) { 
                 // Initialize peer management (adding myself)
                 peer_init();
             }
+            break;
+        case ESP_MESH_LITE_EVENT_CORE_STARTED:
+            //ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_CORE_STARTED>");
             break;
         default:
             ESP_LOGW(TAG, "Unhandled mesh event id: %d", event_id);
@@ -962,7 +1047,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
     {
         case IP_EVENT_STA_GOT_IP:
             ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
-            ESP_LOGI(TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));  // add static payload?          
+            ESP_LOGI(TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip)); 
             break;
 
         case IP_EVENT_STA_LOST_IP:
@@ -977,6 +1062,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
             break;
     }
 }
+
 
 void app_wifi_set_softap_info(void)
 {
@@ -1062,7 +1148,7 @@ void wifi_mesh_init()
     // Get MAC address
     esp_wifi_get_mac(ESP_IF_WIFI_STA, self_mac);
     ESP_LOGI(TAG, "Device MAC: "MACSTR, MAC2STR(self_mac));
-    
+
     // Register WiFi event handler
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &ip_event_handler, NULL));
 
@@ -1073,12 +1159,12 @@ void wifi_mesh_init()
     esp_mesh_lite_start();
 
     // Start system info timer (debug)
-    TimerHandle_t timer = xTimerCreate("print_system_info", 10000 / portTICK_PERIOD_MS,
-                                      pdTRUE, NULL, print_system_info_timercb);
-    xTimerStart(timer, 0);
+    TimerHandle_t timer = xTimerCreate("mesh_nodes_info", 5000 / portTICK_PERIOD_MS,
+                                      pdTRUE, NULL, handle_mesh_changes_timercb);
+    xTimerStart(timer, 5000);
 
     // WiFi Mesh Lite task
-    ESP_ERROR_CHECK(xTaskCreate(wifi_mesh_lite_task, "wifi_mesh_lite_task", 10000, NULL, 7, NULL));
+    ESP_ERROR_CHECK(xTaskCreate(wifi_mesh_lite_task, "wifi_mesh_lite_task", 10000, NULL, 10, NULL));
 
     //* ESP-NOW
     // Initialize ESP-NOW through mesh-lite //max payload ESPNOW_PAYLOAD_MAX_LEN

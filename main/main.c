@@ -20,7 +20,8 @@ void print_firmware_version(void)
 
 void app_main(void)
 {
-    bool isTXUnit = true; //default
+    //! Default
+    UNIT_ROLE = TX;
 
     print_firmware_version();
 
@@ -44,20 +45,23 @@ void app_main(void)
     /*
     i2c_scan_bus();
     if (i2c_device_present(T1_SENSOR_ADDR) || i2c_device_present(T2_SENSOR_ADDR)) {
-        isTXUnit = false;
+        UNIT_ROLE = RX;
         ESP_LOGI(TAG, "RX unit detected via I2C scan");
     }
     else {
-        isTXUnit = true;
+        UNIT_ROLE = TX;
         ESP_LOGI(TAG, "TX unit detected via I2C scan");
     }
     */
-    
-    /* Initialize Hardware*/
-    init_HW(isTXUnit);
 
     /* Initialize WiFi Mesh */
     wifi_mesh_init();
+
+    /* Wait until mesh is formed */
+    xEventGroupWaitBits(eventGroupHandle, MESH_FORMEDBIT, pdTRUE, pdFALSE, portMAX_DELAY);
+
+    /* Initialize Hardware*/
+    init_HW();
 
     //local mesh formation done!
     //master on any node (peer s-link structure) - make 2 lists

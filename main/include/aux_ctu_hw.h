@@ -17,11 +17,34 @@
 #define TXD_PIN                         (GPIO_NUM_4)
 #define RXD_PIN                         (GPIO_NUM_5)
 
-#define EX_UART_NUM                     UART_NUM_0
+#define EX_UART_NUM                     UART_NUM_1
 #define UART_TASK_STACK_SIZE            1024*10
-#define UART_TASK_PRIORITY              6
+#define UART_TASK_PRIORITY              3
 
 #define MIN_DUTY_CYCLE_CHANGE           0.005
+
+// Helper macro to safely get JSON values
+#define SAFE_GET_DOUBLE(obj, key, dest, default_val) \
+    do { \
+        cJSON *item = cJSON_GetObjectItem(obj, key); \
+        if (item != NULL && cJSON_IsNumber(item)) { \
+            dest = item->valuedouble; \
+        } else { \
+            ESP_LOGW(TAG, "Missing or invalid JSON field: %s", key); \
+            dest = default_val; \
+        } \
+    } while(0)
+
+#define SAFE_GET_INT(obj, key, dest, default_val) \
+    do { \
+        cJSON *item = cJSON_GetObjectItem(obj, key); \
+        if (item != NULL && cJSON_IsNumber(item)) { \
+            dest = item->valueint; \
+        } else { \
+            ESP_LOGW(TAG, "Missing or invalid JSON field: %s", key); \
+            dest = default_val; \
+        } \
+    } while(0)
 
 typedef enum 
 {

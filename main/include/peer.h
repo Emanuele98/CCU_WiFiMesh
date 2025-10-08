@@ -84,7 +84,7 @@ typedef struct
 } mesh_alert_payload_t;
 
 /**
- * @brief Payload for control and localization mesh lite messages
+ * @brief Payload for control mesh lite messages
  * 
  */
 typedef struct
@@ -92,6 +92,17 @@ typedef struct
     uint8_t          macAddr[ETH_HWADDR_LEN]; /**< MAC Address of peer */
     uint8_t          command;                  /* Command to be sent to STM32 */
 } mesh_control_payload_t;
+
+/**
+ * @brief Payload for localization mesh lite messages
+ * 
+ */
+typedef struct
+{
+    uint8_t          macAddr[ETH_HWADDR_LEN];   /**< MAC Address of peer */
+    uint8_t          position;                  /* Position of the RX peer */
+} mesh_localization_payload_t;
+
 
 /**
  * @brief Tuning params structure for TX transitor waveforms
@@ -170,9 +181,8 @@ extern mesh_tuning_params_t self_tuning_params;
 /**
  * @brief Initialize hardware components
  * 
- * @param isTX True if initializing TX components, false for RX
  */
-void init_HW(bool isTX);
+void init_HW();
 
 /**
  * @brief Check if at least one RX was not localized yet, and at least one TX pad is available
