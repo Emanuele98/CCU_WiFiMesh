@@ -21,7 +21,7 @@ void print_firmware_version(void)
 void app_main(void)
 {
     //! Default
-    UNIT_ROLE = TX;
+    UNIT_ROLE = RX;
 
     print_firmware_version();
 

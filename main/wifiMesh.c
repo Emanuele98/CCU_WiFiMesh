@@ -22,7 +22,7 @@ static espnow_message_type last_msg_type;
 
 // Broadcast MAC address
 static uint8_t broadcast_mac[ETH_HWADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-static uint8_t parent_mac[ETH_HWADDR_LEN] = {0};
+static uint8_t TX_parent_mac[ETH_HWADDR_LEN] = {0};
 
 /*******************************************************
  *                Function Definitions
@@ -166,7 +166,20 @@ static esp_err_t dynamic_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     mesh_dynamic_payload_t *received_payload = (mesh_dynamic_payload_t *)data;
     ESP_LOGI(TAG, "Received dynamic payload from MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
 
-    //todo handle dynamic payload
+    //todo handle dynamic payload (add also stuff from relative receiver )
+
+    struct TX_peer *p = TX_peer_find_by_mac(received_payload->macAddr);
+    if (p != NULL)
+    {
+        p->dynamic_payload = received_payload;
+        ESP_LOGI(TAG, "TX Peer ID %d dynamic payload updated", p->id);
+        // show data
+        ESP_LOGI(TAG, "Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C",
+                 p->dynamic_payload->voltage,
+                 p->dynamic_payload->current,
+                 p->dynamic_payload->temp1,
+                 p->dynamic_payload->temp2);
+    }
 
     return ESP_OK;
 }
@@ -205,6 +218,18 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     ESP_LOGI(TAG, "Received alert payload from MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
 
     //todo handle alert payload
+    struct TX_peer *p = TX_peer_find_by_mac(received_payload->macAddr);
+    if (p != NULL)
+    {
+        p->alert_payload = received_payload;
+        ESP_LOGI(TAG, "TX Peer ID %d alert payload updated", p->id);
+        // show data
+        ESP_LOGI(TAG, "Overtemperature: %d, Overcurrent: %d, Overvoltage: %d, FOD/FULLY CHARGED: %d",
+                 p->alert_payload->internal.overtemperature,
+                 p->alert_payload->internal.overcurrent,
+                 p->alert_payload->internal.overvoltage,
+                 p->alert_payload->internal.F);
+    }
 
     return ESP_OK;
 }
@@ -307,6 +332,46 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
     return ESP_OK;
 }
 
+// Send dynamic message to Root
+static void send_dynamic_message_to_root(uint8_t *data, size_t data_len) 
+{
+    //ESP_LOGW( TAG, "Sending message to Root");    
+    
+    esp_mesh_lite_msg_config_t config = {
+        .raw_msg = {
+            .msg_id = TO_ROOT_DYNAMIC_MSG_ID,  // Define your own message ID
+            .expect_resp_msg_id = TO_ROOT_DYNAMIC_MSG_ID_RESP,  // Response ID if needed
+            .max_retry = 3,
+            .retry_interval = 10,
+            .data = data,
+            .size = data_len,
+            .raw_resend = esp_mesh_lite_send_raw_msg_to_root,  // Send raw message to Root
+        },
+    };
+    
+    esp_mesh_lite_send_msg(ESP_MESH_LITE_RAW_MSG, &config);
+}
+
+// Send alert message to Root
+static void send_alert_message_to_root(uint8_t *data, size_t data_len)
+{
+    //ESP_LOGW( TAG, "Sending message to Root");    
+    
+    esp_mesh_lite_msg_config_t config = {
+        .raw_msg = {
+            .msg_id = TO_ROOT_ALERT_MSG_ID,  // Define your own message ID
+            .expect_resp_msg_id = TO_ROOT_ALERT_MSG_ID_RESP,  // Response ID if needed
+            .max_retry = 3,
+            .retry_interval = 10,
+            .data = data,
+            .size = data_len,
+            .raw_resend = esp_mesh_lite_send_raw_msg_to_root,  // Send raw message to Root
+        },
+    };
+    
+    esp_mesh_lite_send_msg(ESP_MESH_LITE_RAW_MSG, &config);
+}
+
 // Send Static message to Root
 static void send_static_message_to_root(uint8_t *data, size_t data_len) 
 {
@@ -369,6 +434,32 @@ static void send_control_message_to_child(uint8_t *data, size_t data_len)
 
 //* High level sending functions
 
+static void send_alert_payload(uint8_t *mac)
+{
+    mesh_alert_payload_t my_alert_payload = {
+        .internal = {
+            .overtemperature = self_alert_payload.internal.overtemperature,
+            .overcurrent = self_alert_payload.internal.overcurrent,
+            .overvoltage = self_alert_payload.internal.overvoltage,
+            .F = self_alert_payload.internal.F,
+        }
+    };
+    memcpy(my_alert_payload.macAddr, mac, ETH_HWADDR_LEN);
+    send_alert_message_to_root((uint8_t*)&my_alert_payload, sizeof(mesh_alert_payload_t));
+}
+
+static void send_dynamic_payload(uint8_t *mac)
+{
+    mesh_dynamic_payload_t my_dynamic_payload = {
+        .voltage = self_dynamic_payload.voltage,
+        .current = self_dynamic_payload.current,
+        .temp1 = self_dynamic_payload.temp1,
+        .temp2 = self_dynamic_payload.temp2,
+        };
+    memcpy(my_dynamic_payload.macAddr, mac, ETH_HWADDR_LEN);
+    send_dynamic_message_to_root((uint8_t*)&my_dynamic_payload, sizeof(mesh_dynamic_payload_t));
+}
+
 static void send_localization_payload(uint8_t pos, uint8_t *mac)
 {
     mesh_localization_payload_t my_localization_payload = {
@@ -405,27 +496,19 @@ static void send_static_payload(void)
 /* Parse received ESPNOW data. */
 static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
 {
-    struct RX_peer *p = RX_peer_find_by_mac(mac);
-    if (p != NULL)
-    {
-        ESP_LOGI(TAG, "Handle DYNAMIC RX with ID %d", p->id);
-        
-        //populate strucure for later comparison
-        //misaligned/left check?
-        //share with root via meshLite
-    }
+    //populate mesh lite dynamic payload
+
 }
 
 static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
 {
-    struct RX_peer *p = RX_peer_find_by_mac(mac);
-    if (p != NULL)
-    {
-        ESP_LOGI(TAG, "Handle ALERT RX with ID %d", p->id);
-        //handle alerts locally
-        //share with root via meshLite
-        //NVS handling?
-    }
+    //switch off locally
+    write_STM_command(SWITCH_OFF);
+
+    //populate mesh lite alert payload 
+
+
+    //reconnection timeout
 }
 
 
@@ -628,7 +711,7 @@ static void espnow_task(void *pvParameter)
                     }
                     else
                     {
-                        ESP_LOGW(TAG, "Unicast data sent!");
+                        ESP_LOGW(TAG, "Unicast data sent %d!", last_msg_type);
 
                         //unicast message
                         if (send_cb->status != ESP_NOW_SEND_SUCCESS) 
@@ -737,8 +820,8 @@ static void espnow_task(void *pvParameter)
                             // Save peer and communicate via ESP-NOW
                             add_peer_if_needed(recv_cb->mac_addr);
                             //save TX parent MAC addr
-                            memcpy(parent_mac, recv_cb->mac_addr, ETH_HWADDR_LEN);
-                            rxDynTimeout = recv_data->field_1;
+                            memcpy(TX_parent_mac, recv_cb->mac_addr, ETH_HWADDR_LEN);
+                            DynTimeout = recv_data->field_1;
                             rxLocalized = true;
                         }
                     }
@@ -824,6 +907,9 @@ static void wifi_mesh_lite_task(void *pvParameters)
     esp_mesh_lite_raw_msg_action_list_register(raw_actions);
 
     static int8_t previousTX_position = -1;
+    static mesh_dynamic_payload_t previous_dynamic_payload = {0};
+    static mesh_alert_payload_t previous_alert_payload = {0};
+    static uint32_t lastDynamic = 0;
 
     while (1) 
     {
@@ -841,14 +927,26 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     reset_the_baton();
                     vTaskDelay(pdMS_TO_TICKS(100)); // Delay
                 }
-                //todo dynamic data collection / local alerts handling? (separate task takes care of mqtt based on changes)
+                //todo (separate task takes care of mqtt + alerts based on changes)
             }
             else
             {
                 if(UNIT_ROLE == TX)
                 {
-                    //todo dynamic payload upon changes / alerts
-                    //using meshlite functions
+                    //dynamic payload upon changes and alerts
+
+                    if (dynamic_payload_changes(&previous_dynamic_payload) || 
+                        ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
+                    {
+                        //meshlite send dynamic payload upon changes or max time
+                        send_dynamic_payload(self_mac);
+                        lastDynamic = xTaskGetTickCount();
+                    }
+                    if (alert_payload_changes(&previous_alert_payload))
+                    {
+                        //meshlite send alert payload upon changes
+                        send_alert_payload(self_mac);
+                    }
                 }
                 else
                 {
@@ -860,14 +958,23 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     }
                     else
                     {
-                        //espnow send dynamic payload upon changes or min time
-                        espnow_send_message(DATA_DYNAMIC, parent_mac);
-                        vTaskDelay(rxDynTimeout*1000); //todo: based on sensors change / alerts
+                        if (dynamic_payload_changes(&previous_dynamic_payload) || 
+                            ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
+                        {           
+                            //espnow send dynamic payload upon changes or min time
+                            espnow_send_message(DATA_DYNAMIC, TX_parent_mac);
+                            lastDynamic = xTaskGetTickCount();
+                        }
+                        if (alert_payload_changes(&previous_alert_payload))
+                        {
+                            //espnow send alert payload upon changes
+                            espnow_send_message(DATA_ALERT, TX_parent_mac);
+                        }
                     }
                 }
             } 
         }
-        vTaskDelay(pdMS_TO_TICKS(50)); // Delay for 50ms
+        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 10ms
     }
 
     vTaskDelete(NULL);

@@ -11,7 +11,7 @@ nvs_handle_t my_handle;
 SemaphoreHandle_t i2c_sem;
 
 bool rxLocalized = false;
-uint8_t rxDynTimeout = PEER_DYNAMIC_TIMER;
+uint8_t DynTimeout = PEER_DYNAMIC_TIMER;
 EventGroupHandle_t eventGroupHandle;
 
 uint8_t self_mac[ETH_HWADDR_LEN] = {0};

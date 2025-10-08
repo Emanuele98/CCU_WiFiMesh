@@ -122,7 +122,7 @@ extern time_t timePeer[MESH_LITE_MAXIMUM_NODE_NUMBER];
 extern nvs_handle_t my_handle;
 
 extern bool rxLocalized;
-extern uint8_t rxDynTimeout;
+extern uint8_t DynTimeout;
 extern EventGroupHandle_t eventGroupHandle;
 
 //Self-MAC address

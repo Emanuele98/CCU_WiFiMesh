@@ -163,6 +163,17 @@ static void get_adc(void *pvParameters)
             read_errors++;
             ESP_LOGW(TAG, "ADC read failed: ch0=%d, ch1=%d", ret1, ret2);
         }
+
+        //Alerts check
+        if (self_dynamic_payload.voltage > OVER_VOLTAGE) {
+            self_alert_payload.internal.overvoltage = 1;
+        }
+        if (self_dynamic_payload.current > OVER_CURRENT) {
+            self_alert_payload.internal.overcurrent = 1;
+        }
+        if (self_dynamic_payload.temp1 > OVER_TEMPERATURE || self_dynamic_payload.temp2 > OVER_TEMPERATURE) {
+            self_alert_payload.internal.overtemperature = 1;
+        }
         
         // Sample at ~1kHz (1ms delay) for equivalent to 5kHz/2 channels in continuous mode
         vTaskDelay(pdMS_TO_TICKS(1));

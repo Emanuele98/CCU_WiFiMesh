@@ -338,3 +338,53 @@ bool atLeastOneRxNeedLocalization()
 
     return false;
 }
+
+#define DELTA_VOLTAGE 10.0
+#define DELTA_CURRENT 1
+#define DELTA_TEMPERATURE 1.0
+
+bool dynamic_payload_changes(mesh_dynamic_payload_t *previous)
+{
+    bool res = false;
+
+    if (fabs(self_dynamic_payload.voltage - previous->voltage) > DELTA_VOLTAGE) 
+    {
+        res = true;
+        ESP_LOGW(TAG, "Voltage change detected: %.2f %.2f V", self_dynamic_payload.voltage, previous->voltage);
+        previous->voltage = self_dynamic_payload.voltage;
+    }
+    if (fabs(self_dynamic_payload.current - previous->current) > DELTA_CURRENT) 
+    {
+        res = true;
+        ESP_LOGW(TAG, "Current change detected: %.2f %.2f A", self_dynamic_payload.current, previous->current);
+        previous->current = self_dynamic_payload.current;
+    }
+    if (fabs(self_dynamic_payload.temp1 - previous->temp1) > DELTA_TEMPERATURE) 
+    {
+        res = true;
+        ESP_LOGW(TAG, "Temp1 change detected: %.2f %.2f C", self_dynamic_payload.temp1, previous->temp1);
+        previous->temp1 = self_dynamic_payload.temp1;
+    }
+    if (fabs(self_dynamic_payload.temp2 - previous->temp2) > DELTA_TEMPERATURE) 
+    {
+        res = true;
+        ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.temp2, previous->temp2);
+        previous->temp2 = self_dynamic_payload.temp2;
+    }
+
+    return res;
+}
+
+bool alert_payload_changes(mesh_alert_payload_t *previous)
+{
+    bool res = false;
+
+    if (self_alert_payload.all_flags != previous->all_flags) res = true;
+
+    previous->internal.overcurrent = self_alert_payload.internal.overcurrent;
+    previous->internal.overtemperature = self_alert_payload.internal.overtemperature;
+    previous->internal.overvoltage = self_alert_payload.internal.overvoltage;
+    previous->internal.F = self_alert_payload.internal.F;
+
+    return res;
+}

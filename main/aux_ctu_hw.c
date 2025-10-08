@@ -48,7 +48,7 @@ static void parse_received_UART(uint8_t *rx_uart)
 
     if (self_alert_payload.all_flags) {
         ESP_LOGE(TAG, "ALERT: %d", alertType);
-        //send_alert_message();
+        write_STM_command(SWITCH_OFF);
     }
 
     // Get tuning parameters
@@ -140,7 +140,7 @@ static void uart_event_task(void *pvParameters)
 static void rx_task(void *pvParameters)
 {
     uint8_t buffer[UART_BUFFER_SIZE];
-    uint8_t rxIndex = 0;
+    uint16_t rxIndex = 0;
     uint8_t* data = (uint8_t*) malloc(UART_BUFFER_SIZE/2);
     bool json = false;
     
@@ -264,13 +264,13 @@ esp_err_t write_STM_command(stm32_command_t command)
     }
     else if (command == SWITCH_OFF)
     {
-        ESP_LOGW(TAG, "OFF");
+        //ESP_LOGW(TAG, "OFF");
         gpio_set_level(GPIO_OUTPUT_PIN, 0);
         powerStatus = SWITCH_OFF;
     }
     else if (command == SWITCH_LOC)
     {
-        ESP_LOGW(TAG, "ON");
+        //ESP_LOGW(TAG, "ON");
         gpio_set_level(GPIO_OUTPUT_PIN, 1); //no localization mode for now
         powerStatus = SWITCH_LOC;
     }

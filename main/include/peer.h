@@ -61,9 +61,7 @@ typedef struct
     float             current;            /**< Current Irect value from I2C (4 bytes). */
     float             temp1;              /**< Temperature value from I2C (4 bytes). */
     float             temp2;              /**< Temperature value from I2C (4 bytes). */
-    float             rx_power;           /* Calculate received power if peer is CRU */
-    float             tx_power;           /* Calculate transmitted power if peer is CTU */
-} mesh_dynamic_payload_t;
+} mesh_dynamic_payload_t; //todo add both TX and RX structures
 
 /**
  * @brief Alert characteristic structure. This contains elements necessary for alert payload.
@@ -81,7 +79,7 @@ typedef struct
         } internal;
         uint8_t all_flags;                 /* To check if at least one alert is active */
     };           
-} mesh_alert_payload_t;
+} mesh_alert_payload_t; //todo add both TX and RX structures
 
 /**
  * @brief Payload for control mesh lite messages
@@ -269,5 +267,23 @@ void allLocalizationTxPeersOFF();
  * @return struct TX_peer* Pointer to the next TX peer for localization
  */
 struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos);
+
+/**
+ * @brief Check if the dynamic payload has changed compared to the previous one
+ * 
+ * @param previous Previous dynamic payload to compare with
+ * @return true 
+ * @return false 
+ */
+bool dynamic_payload_changes(mesh_dynamic_payload_t *previous);
+
+/**
+ * @brief Check if the alert payload has changed compared to the previous one
+ * 
+ * @param previous Previous alert payload to compare with
+ * @return true 
+ * @return false 
+ */
+bool alert_payload_changes(mesh_alert_payload_t *previous);
 
 #endif /* PEER_H */
