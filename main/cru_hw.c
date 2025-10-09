@@ -138,15 +138,15 @@ static void get_adc(void *pvParameters)
                 
                 if (err1 == ESP_OK && err2 == ESP_OK) {
                     // Update global payload
-                    self_dynamic_payload.voltage = (float)(ch2_voltage_mv * 42/1000.00);
-                    self_dynamic_payload.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
+                    self_dynamic_payload.RX.voltage = (float)(ch2_voltage_mv * 42/1000.00);
+                    self_dynamic_payload.RX.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
                     
                     //ESP_LOGI(TAG, "Ch2: %.3fV --> Voltage: %.3f, Ch3: %.3fV --> Current: %.3f", 
                     //   ch2_voltage_mv/1000.0f, self_dynamic_payload.voltage, 
                     //    ch3_voltage_mv/1000.0f, self_dynamic_payload.current);
                 }
 
-                if (self_dynamic_payload.voltage > MIN_RX_VOLTAGE) {
+                if (self_dynamic_payload.RX.voltage > MIN_RX_VOLTAGE) {
                     xEventGroupSetBits(eventGroupHandle, LOCALIZEDBIT);
                 }
                 
@@ -165,14 +165,14 @@ static void get_adc(void *pvParameters)
         }
 
         //Alerts check
-        if (self_dynamic_payload.voltage > OVER_VOLTAGE) {
-            self_alert_payload.internal.overvoltage = 1;
+        if (self_dynamic_payload.RX.voltage > OVER_VOLTAGE) {
+            self_alert_payload.RX.RX_internal.overvoltage = 1;
         }
-        if (self_dynamic_payload.current > OVER_CURRENT) {
-            self_alert_payload.internal.overcurrent = 1;
+        if (self_dynamic_payload.RX.current > OVER_CURRENT) {
+            self_alert_payload.RX.RX_internal.overcurrent = 1;
         }
-        if (self_dynamic_payload.temp1 > OVER_TEMPERATURE || self_dynamic_payload.temp2 > OVER_TEMPERATURE) {
-            self_alert_payload.internal.overtemperature = 1;
+        if (self_dynamic_payload.RX.temp1 > OVER_TEMPERATURE || self_dynamic_payload.RX.temp2 > OVER_TEMPERATURE) {
+            self_alert_payload.RX.RX_internal.overtemperature = 1;
         }
         
         // Sample at ~1kHz (1ms delay) for equivalent to 5kHz/2 channels in continuous mode
@@ -198,14 +198,14 @@ static void get_temp(void *pvParameters)
                     counter++;
                     t1 = i2c_read_temperature_sensor(0);
                     if (t1 != -1)
-                        self_dynamic_payload.temp1 = t1;
+                        self_dynamic_payload.RX.temp1 = t1;
                     break;
 
                 case 1:
                     counter = 0;
                     t2 = i2c_read_temperature_sensor(1);
                     if (t2 != -1)
-                        self_dynamic_payload.temp2= t2;
+                        self_dynamic_payload.RX.temp2= t2;
                     break;
                 default:
                     xSemaphoreGive(i2c_sem);

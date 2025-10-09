@@ -56,12 +56,25 @@ typedef struct
  */
 typedef struct
 {
-    uint8_t           macAddr[ETH_HWADDR_LEN]; /**< MAC Address of peer */
-    float             voltage;            /**< Voltage value from I2C (4 bytes). */
-    float             current;            /**< Current Irect value from I2C (4 bytes). */
-    float             temp1;              /**< Temperature value from I2C (4 bytes). */
-    float             temp2;              /**< Temperature value from I2C (4 bytes). */
-} mesh_dynamic_payload_t; //todo add both TX and RX structures
+    struct 
+    {
+        uint8_t           macAddr[ETH_HWADDR_LEN];  /**< MAC Address of TX peer */
+        TX_status         tx_status;               /* TX status */
+        float             voltage;                  /**< TX Voltage (4 bytes). */
+        float             current;                  /**< TX Current Irect (4 bytes). */
+        float             temp1;                    /**< TX Temperature (4 bytes). */
+        float             temp2;                    /**< TX Temperature (4 bytes). */
+    } TX;
+    struct 
+    {
+        uint8_t           macAddr[ETH_HWADDR_LEN];  /**< MAC Address of RX peer */
+        RX_status         rx_status;                /* RX status */
+        float             voltage;                  /**< RX Voltage (4 bytes). */
+        float             current;                  /**< RX Current Irect (4 bytes). */
+        float             temp1;                    /**< RX Temperature (4 bytes). */
+        float             temp2;                    /**< RX Temperature (4 bytes). */
+    } RX;
+} mesh_dynamic_payload_t;
 
 /**
  * @brief Alert characteristic structure. This contains elements necessary for alert payload.
@@ -69,17 +82,34 @@ typedef struct
  */
 typedef struct
 {
-    uint8_t            macAddr[ETH_HWADDR_LEN]; /**< MAC Address of peer */
-    union {
-        struct {
-            bool       overtemperature;    /* Overtemperature alert */
-            bool       overcurrent;        /* Overcurrent alert     */
-            bool       overvoltage;        /* Overvoltage alert     */
-            bool       F;                  /* FOD for TX, FULLY CHARGED for RX */
-        } internal;
-        uint8_t all_flags;                 /* To check if at least one alert is active */
-    };           
-} mesh_alert_payload_t; //todo add both TX and RX structures
+    struct
+    {
+        uint8_t            macAddr[ETH_HWADDR_LEN]; /**< MAC Address of TX peer */          
+        union {
+            struct {
+                uint8_t       overtemperature:1;    /* TX Overtemperature alert */
+                uint8_t       overcurrent:1;        /* TX Overcurrent alert     */
+                uint8_t       overvoltage:1;        /* TX Overvoltage alert     */
+                uint8_t       FOD:1;                /* TX FOD */
+            } TX_internal;
+            uint8_t TX_all_flags;                   /* TX To check if at least one alert is active */
+        }; 
+    } TX;
+    struct
+    {
+        uint8_t            macAddr[ETH_HWADDR_LEN]; /**< MAC Address of TX peer */          
+        union {
+            struct {
+                uint8_t       overtemperature:1;    /* RX Overtemperature alert */
+                uint8_t       overcurrent:1;        /* RXOvercurrent alert     */
+                uint8_t       overvoltage:1;        /* RX Overvoltage alert     */
+                uint8_t       FullyCharged:1;       /* RX FULLY CHARGED for RX */
+            } RX_internal;
+            uint8_t RX_all_flags;                   /* RX To check if at least one alert is active */
+        }; 
+    } RX;
+    
+} mesh_alert_payload_t; 
 
 /**
  * @brief Payload for control mesh lite messages
@@ -108,6 +138,7 @@ typedef struct
  */
 typedef struct
 {
+    uint8_t          macAddr[ETH_HWADDR_LEN];   /**< MAC Address of peer */
     float             duty_cycle;
     uint8_t           tuning;
     uint8_t           low_vds_threshold;
@@ -285,5 +316,11 @@ bool dynamic_payload_changes(mesh_dynamic_payload_t *previous);
  * @return false 
  */
 bool alert_payload_changes(mesh_alert_payload_t *previous);
+
+/**
+ * @brief Init payloads self-structures
+ * 
+ */
+void init_payloads();
 
 #endif /* PEER_H */

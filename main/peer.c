@@ -81,16 +81,23 @@ void peer_init()
     SLIST_INIT(&RX_peers);
     SLIST_INIT(&TX_peers);
     struct TX_peer *p = TX_peer_add(self_mac);
-    if (p != NULL) {
+    if (p != NULL) 
+    {
         ESP_LOGI(TAG, "Added self TX peer with ID %d", CONFIG_UNIT_ID);
         p->id = CONFIG_UNIT_ID;
         p->position = p->id; // Position same as ID for TX
-    }
 
-    p->static_payload = &self_static_payload;
-    p->dynamic_payload = &self_dynamic_payload;
-    p->alert_payload = &self_alert_payload;
-    p->tuning_params = &self_tuning_params;
+        // Free the malloc'd memory first to avoid leak
+        free(p->static_payload);
+        free(p->dynamic_payload);
+        free(p->alert_payload);
+        free(p->tuning_params);
+
+        p->static_payload = &self_static_payload;
+        p->dynamic_payload = &self_dynamic_payload;
+        p->alert_payload = &self_alert_payload;
+        p->tuning_params = &self_tuning_params;
+    }
 }
 
 struct TX_peer* TX_peer_add(uint8_t *mac)
@@ -345,31 +352,61 @@ bool atLeastOneRxNeedLocalization()
 
 bool dynamic_payload_changes(mesh_dynamic_payload_t *previous)
 {
+    if (previous == NULL)
+    {
+        ESP_LOGE(TAG, "Previous dynamic payload is NULL");
+        return false;
+    }
+
     bool res = false;
 
-    if (fabs(self_dynamic_payload.voltage - previous->voltage) > DELTA_VOLTAGE) 
+    if (fabs(self_dynamic_payload.TX.voltage - previous->TX.voltage) > DELTA_VOLTAGE) 
     {
         res = true;
-        ESP_LOGW(TAG, "Voltage change detected: %.2f %.2f V", self_dynamic_payload.voltage, previous->voltage);
-        previous->voltage = self_dynamic_payload.voltage;
+        //ESP_LOGW(TAG, "Voltage change detected: %.2f %.2f V", self_dynamic_payload.TX.voltage, previous->TX.voltage);
+        previous->TX.voltage = self_dynamic_payload.TX.voltage;
     }
-    if (fabs(self_dynamic_payload.current - previous->current) > DELTA_CURRENT) 
+    if (fabs(self_dynamic_payload.TX.current - previous->TX.current) > DELTA_CURRENT) 
     {
         res = true;
-        ESP_LOGW(TAG, "Current change detected: %.2f %.2f A", self_dynamic_payload.current, previous->current);
-        previous->current = self_dynamic_payload.current;
+        //ESP_LOGW(TAG, "Current change detected: %.2f %.2f A", self_dynamic_payload.TX.current, previous->TX.current);
+        previous->TX.current = self_dynamic_payload.TX.current;
     }
-    if (fabs(self_dynamic_payload.temp1 - previous->temp1) > DELTA_TEMPERATURE) 
+    if (fabs(self_dynamic_payload.TX.temp1 - previous->TX.temp1) > DELTA_TEMPERATURE) 
     {
         res = true;
-        ESP_LOGW(TAG, "Temp1 change detected: %.2f %.2f C", self_dynamic_payload.temp1, previous->temp1);
-        previous->temp1 = self_dynamic_payload.temp1;
+        //ESP_LOGW(TAG, "Temp1 change detected: %.2f %.2f C", self_dynamic_payload.TX.temp1, previous->TX.temp1);
+        previous->TX.temp1 = self_dynamic_payload.TX.temp1;
     }
-    if (fabs(self_dynamic_payload.temp2 - previous->temp2) > DELTA_TEMPERATURE) 
+    if (fabs(self_dynamic_payload.TX.temp2 - previous->TX.temp2) > DELTA_TEMPERATURE) 
     {
         res = true;
-        ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.temp2, previous->temp2);
-        previous->temp2 = self_dynamic_payload.temp2;
+        ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.TX.temp2, previous->TX.temp2);
+        previous->TX.temp2 = self_dynamic_payload.TX.temp2;
+    }
+    if (fabs(self_dynamic_payload.RX.voltage - previous->RX.voltage) > DELTA_VOLTAGE) 
+    {
+        res = true;
+        //ESP_LOGW(TAG, "Voltage change detected: %.2f %.2f V", self_dynamic_payload.RX.voltage, previous->RX.voltage);
+        previous->RX.voltage = self_dynamic_payload.RX.voltage;
+    }
+    if (fabs(self_dynamic_payload.RX.current - previous->RX.current) > DELTA_CURRENT) 
+    {
+        res = true;
+        //ESP_LOGW(TAG, "Current change detected: %.2f %.2f A", self_dynamic_payload.RX.current, previous->RX.current);
+        previous->RX.current = self_dynamic_payload.RX.current;
+    }
+    if (fabs(self_dynamic_payload.RX.temp1 - previous->RX.temp1) > DELTA_TEMPERATURE) 
+    {
+        res = true;
+        //ESP_LOGW(TAG, "Temp1 change detected: %.2f %.2f C", self_dynamic_payload.RX.temp1, previous->RX.temp1);
+        previous->RX.temp1 = self_dynamic_payload.RX.temp1;
+    }
+    if (fabs(self_dynamic_payload.RX.temp2 - previous->RX.temp2) > DELTA_TEMPERATURE) 
+    {
+        res = true;
+        ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.RX.temp2, previous->RX.temp2);
+        previous->RX.temp2 = self_dynamic_payload.RX.temp2;
     }
 
     return res;
@@ -377,14 +414,51 @@ bool dynamic_payload_changes(mesh_dynamic_payload_t *previous)
 
 bool alert_payload_changes(mesh_alert_payload_t *previous)
 {
+    if (previous == NULL)
+    {
+        ESP_LOGE(TAG, "Previous alert payload is NULL");
+        return false;
+    }
+
     bool res = false;
 
-    if (self_alert_payload.all_flags != previous->all_flags) res = true;
+    if (self_alert_payload.RX.RX_all_flags != previous->RX.RX_all_flags || self_alert_payload.TX.TX_all_flags != previous->TX.TX_all_flags)
+        res = true;
 
-    previous->internal.overcurrent = self_alert_payload.internal.overcurrent;
-    previous->internal.overtemperature = self_alert_payload.internal.overtemperature;
-    previous->internal.overvoltage = self_alert_payload.internal.overvoltage;
-    previous->internal.F = self_alert_payload.internal.F;
+    *previous = self_alert_payload;
 
     return res;
 }
+
+void init_payloads()
+{
+    //Init payloads
+    memset(&self_static_payload, 0, sizeof(self_static_payload));
+    memset(&self_dynamic_payload, 0, sizeof(self_dynamic_payload));
+    memset(&self_alert_payload, 0, sizeof(self_alert_payload));
+    memset(&self_tuning_params, 0, sizeof(self_tuning_params));
+
+    memcpy(self_static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
+    memcpy(self_dynamic_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
+    memcpy(self_alert_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
+    memcpy(self_tuning_params.macAddr, self_mac, ETH_HWADDR_LEN);
+
+    //Define static payload
+    self_static_payload.id = CONFIG_UNIT_ID;
+    self_static_payload.type = UNIT_ROLE;
+    if (UNIT_ROLE == TX)
+    {
+        self_static_payload.OVERVOLTAGE_limit = OVERVOLTAGE_TX;
+        self_static_payload.OVERCURRENT_limit = OVERCURRENT_TX;
+        self_static_payload.OVERTEMPERATURE_limit = OVERTEMPERATURE_TX;
+        self_static_payload.FOD = FOD_ACTIVE;
+    }
+    else
+    {
+        self_static_payload.OVERVOLTAGE_limit = OVERVOLTAGE_RX;
+        self_static_payload.OVERCURRENT_limit = OVERCURRENT_RX;
+        self_static_payload.OVERTEMPERATURE_limit = OVERTEMPERATURE_RX;
+        self_static_payload.FOD = FOD_ACTIVE;
+    }
+}
+

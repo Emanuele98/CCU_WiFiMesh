@@ -73,7 +73,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
 {
     *out_len = sizeof(mesh_static_payload_t);
     *out_data = malloc(*out_len);
-    mesh_static_payload_t my_static_payload = {
+    mesh_static_payload_t my_static_payload = { //todo change based on rx role
                     .id = CONFIG_UNIT_ID,
                     .type = UNIT_ROLE, 
                     .OVERVOLTAGE_limit = OVERVOLTAGE_TX,
@@ -101,7 +101,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
     ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
              received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
-    ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
+    ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s", //todo useless then
              received_payload->OVERVOLTAGE_limit,
              received_payload->OVERCURRENT_limit,
              received_payload->OVERTEMPERATURE_limit,
@@ -164,21 +164,19 @@ static esp_err_t dynamic_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_dynamic_payload_t *received_payload = (mesh_dynamic_payload_t *)data;
-    ESP_LOGI(TAG, "Received dynamic payload from MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
+    ESP_LOGI(TAG, "Received dynamic payload from MAC: "MACSTR,  MAC2STR(received_payload->TX.macAddr));
 
     //todo handle dynamic payload (add also stuff from relative receiver )
-
-    struct TX_peer *p = TX_peer_find_by_mac(received_payload->macAddr);
+    struct TX_peer *p = TX_peer_find_by_mac(received_payload->TX.macAddr);
     if (p != NULL)
     {
-        p->dynamic_payload = received_payload;
+        *p->dynamic_payload = *received_payload;
         ESP_LOGI(TAG, "TX Peer ID %d dynamic payload updated", p->id);
         // show data
-        ESP_LOGI(TAG, "Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C",
-                 p->dynamic_payload->voltage,
-                 p->dynamic_payload->current,
-                 p->dynamic_payload->temp1,
-                 p->dynamic_payload->temp2);
+        ESP_LOGI(TAG, "TX: Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C \n\
+                        RX: Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C",
+                 p->dynamic_payload->TX.voltage, p->dynamic_payload->TX.current, p->dynamic_payload->TX.temp1, p->dynamic_payload->TX.temp2,
+                p->dynamic_payload->RX.voltage, p->dynamic_payload->RX.current, p->dynamic_payload->RX.temp1, p->dynamic_payload->RX.temp2);
     }
 
     return ESP_OK;
@@ -215,20 +213,18 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_alert_payload_t *received_payload = (mesh_alert_payload_t *)data;
-    ESP_LOGI(TAG, "Received alert payload from MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
+    ESP_LOGI(TAG, "Received alert payload from MAC: "MACSTR,  MAC2STR(received_payload->TX.macAddr));
 
     //todo handle alert payload
-    struct TX_peer *p = TX_peer_find_by_mac(received_payload->macAddr);
+    struct TX_peer *p = TX_peer_find_by_mac(received_payload->TX.macAddr);
     if (p != NULL)
     {
-        p->alert_payload = received_payload;
+        *p->alert_payload = *received_payload;
         ESP_LOGI(TAG, "TX Peer ID %d alert payload updated", p->id);
         // show data
-        ESP_LOGI(TAG, "Overtemperature: %d, Overcurrent: %d, Overvoltage: %d, FOD/FULLY CHARGED: %d",
-                 p->alert_payload->internal.overtemperature,
-                 p->alert_payload->internal.overcurrent,
-                 p->alert_payload->internal.overvoltage,
-                 p->alert_payload->internal.F);
+        ESP_LOGI(TAG, "TX: OV %d, OC %d, OT %d, FOD %d \n RX: OV: %d, OC %d, OT %d FC %d",
+            p->alert_payload->TX.TX_internal.overvoltage, p->alert_payload->TX.TX_internal.overcurrent, p->alert_payload->TX.TX_internal.overtemperature, p->alert_payload->TX.TX_internal.FOD,
+            p->alert_payload->RX.RX_internal.overvoltage, p->alert_payload->RX.RX_internal.overcurrent, p->alert_payload->RX.RX_internal.overtemperature, p->alert_payload->RX.RX_internal.FullyCharged);
     }
 
     return ESP_OK;
@@ -251,6 +247,9 @@ static esp_err_t control_to_child_raw_msg_process(uint8_t *data, uint32_t len,
                                      uint32_t seq) 
 {
     //ESP_LOGW( TAG, "Process control message");   
+
+    if (UNIT_ROLE == RX)
+        return ESP_OK; // RX do not process control messages
 
     // Process the received data
     if (len != sizeof(mesh_control_payload_t)) {
@@ -297,7 +296,7 @@ static esp_err_t localization_to_root_raw_msg_process_response(uint8_t *data, ui
                                      uint32_t seq) 
 {
     //set static payload
-    ESP_LOGW( TAG, "Process localization message RESPONSE!");   
+    //ESP_LOGW( TAG, "Process localization message RESPONSE!");   
 
     return ESP_OK;
 }
@@ -306,7 +305,7 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    ESP_LOGW( TAG, "Process localization message");   
+    //ESP_LOGW( TAG, "Process localization message");   
 
     // Process the received data
     if (len != sizeof(mesh_localization_payload_t)) {
@@ -434,30 +433,14 @@ static void send_control_message_to_child(uint8_t *data, size_t data_len)
 
 //* High level sending functions
 
-static void send_alert_payload(uint8_t *mac)
+static void send_alert_payload()
 {
-    mesh_alert_payload_t my_alert_payload = {
-        .internal = {
-            .overtemperature = self_alert_payload.internal.overtemperature,
-            .overcurrent = self_alert_payload.internal.overcurrent,
-            .overvoltage = self_alert_payload.internal.overvoltage,
-            .F = self_alert_payload.internal.F,
-        }
-    };
-    memcpy(my_alert_payload.macAddr, mac, ETH_HWADDR_LEN);
-    send_alert_message_to_root((uint8_t*)&my_alert_payload, sizeof(mesh_alert_payload_t));
+    send_alert_message_to_root((uint8_t*)&self_alert_payload, sizeof(mesh_alert_payload_t));
 }
 
-static void send_dynamic_payload(uint8_t *mac)
+static void send_dynamic_payload()
 {
-    mesh_dynamic_payload_t my_dynamic_payload = {
-        .voltage = self_dynamic_payload.voltage,
-        .current = self_dynamic_payload.current,
-        .temp1 = self_dynamic_payload.temp1,
-        .temp2 = self_dynamic_payload.temp2,
-        };
-    memcpy(my_dynamic_payload.macAddr, mac, ETH_HWADDR_LEN);
-    send_dynamic_message_to_root((uint8_t*)&my_dynamic_payload, sizeof(mesh_dynamic_payload_t));
+    send_dynamic_message_to_root((uint8_t*)&self_dynamic_payload, sizeof(mesh_dynamic_payload_t));
 }
 
 static void send_localization_payload(uint8_t pos, uint8_t *mac)
@@ -480,16 +463,7 @@ static void send_control_payload(stm32_command_t command, uint8_t *mac)
 
 static void send_static_payload(void)
 {
-    mesh_static_payload_t my_static_payload = {
-                    .id = CONFIG_UNIT_ID,
-                    .type = UNIT_ROLE, 
-                    .OVERVOLTAGE_limit = OVERVOLTAGE_TX,
-                    .OVERCURRENT_limit = OVERCURRENT_TX,
-                    .OVERTEMPERATURE_limit = OVERTEMPERATURE_TX,
-                    .FOD = FOD_ACTIVE
-                };
-    memcpy(my_static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
-    send_static_message_to_root((uint8_t*)&my_static_payload, sizeof(mesh_static_payload_t));
+    send_static_message_to_root((uint8_t*)&self_static_payload, sizeof(mesh_static_payload_t));
 }
 
 //*esp-NOW functions
@@ -497,7 +471,10 @@ static void send_static_payload(void)
 static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
 {
     //populate mesh lite dynamic payload
-
+    self_dynamic_payload.RX.voltage = data->field_1;
+    self_dynamic_payload.RX.current = data->field_2;
+    self_dynamic_payload.RX.temp1 = data->field_3;
+    self_dynamic_payload.RX.temp2 = data->field_4;
 }
 
 static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
@@ -506,7 +483,10 @@ static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
     write_STM_command(SWITCH_OFF);
 
     //populate mesh lite alert payload 
-
+    self_alert_payload.RX.RX_internal.overvoltage = data->field_1;
+    self_alert_payload.RX.RX_internal.overcurrent = data->field_2;
+    self_alert_payload.RX.RX_internal.overtemperature = data->field_3;
+    self_alert_payload.RX.RX_internal.FullyCharged = data->field_4;
 
     //reconnection timeout
 }
@@ -548,7 +528,7 @@ static void espnow_data_prepare(espnow_data_t *buf, espnow_message_type type)
     switch (type)
     {
     case DATA_BROADCAST:
-        buf->field_1 = self_dynamic_payload.voltage;
+        buf->field_1 = self_dynamic_payload.RX.voltage;
         ESP_LOGI(TAG, "Broadcast data voltage %.2f", buf->field_1);
         break;
 
@@ -558,18 +538,18 @@ static void espnow_data_prepare(espnow_data_t *buf, espnow_message_type type)
 
     case DATA_ALERT:
         // fill in alerts data
-        buf->field_1 = self_alert_payload.internal.overtemperature;
-        buf->field_2 = self_alert_payload.internal.overcurrent;
-        buf->field_3 = self_alert_payload.internal.overvoltage;
-        buf->field_4 = self_alert_payload.internal.F;
+        buf->field_1 = self_alert_payload.RX.RX_internal.overvoltage;
+        buf->field_2 = self_alert_payload.RX.RX_internal.overcurrent;
+        buf->field_3 = self_alert_payload.RX.RX_internal.overtemperature;
+        buf->field_4 = self_alert_payload.RX.RX_internal.FullyCharged;
         break;
 
     case DATA_DYNAMIC:
         // fill in dynamic data
-        buf->field_1 = self_dynamic_payload.voltage;
-        buf->field_2 = self_dynamic_payload.current;
-        buf->field_3 = self_dynamic_payload.temp1;
-        buf->field_4 = self_dynamic_payload.temp2;
+        buf->field_1 = self_dynamic_payload.RX.voltage;
+        buf->field_2 = self_dynamic_payload.RX.current;
+        buf->field_3 = self_dynamic_payload.RX.temp1;
+        buf->field_4 = self_dynamic_payload.RX.temp2;
         break;
         
     default:
@@ -706,7 +686,7 @@ static void espnow_task(void *pvParameter)
                     bool addr_type = IS_BROADCAST_ADDR(send_cb->mac_addr);
                     if (addr_type)
                     {
-                        ESP_LOGI(TAG, "Broadcast data sent!");
+                        //ESP_LOGI(TAG, "Broadcast data sent!");
                         //broadcast always successfull anyway (no ack)
                     }
                     else
@@ -765,8 +745,7 @@ static void espnow_task(void *pvParameter)
 
                     if (msg_type == DATA_BROADCAST && (UNIT_ROLE == TX))
                     {
-                        ESP_LOGI(TAG, "Receive broadcast data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
-                        ESP_LOGI(TAG, "rx voltage %.2f", recv_data->field_1);
+                        ESP_LOGI(TAG, "Receive broadcast data from: "MACSTR", RX voltage: %.2f", MAC2STR(recv_cb->mac_addr), recv_data->field_1);
 
                         if (recv_data->field_1 > MIN_RX_VOLTAGE)
                         {
@@ -792,11 +771,11 @@ static void espnow_task(void *pvParameter)
                                 }
                                 else
                                 {
-                                    ESP_LOGI(TAG, "RX has been located to pad x!");
+                                    //ESP_LOGI(TAG, "RX has been located to pad x!");
                                     //todo (later to make it more robust) advise other TX which then save the peer //p->position update (for double check)
                                 }
                             }
-                            //Case 3 - I am TX - am I active? yes then tell master - no then discard //todo later
+                            //Case 3 - I am TX - am I active? yes then tell master - no then discard
                             else if (powerStatus == SWITCH_LOC)
                             {
                                 ESP_LOGI(TAG, "RX has been located to this pad!");
@@ -828,12 +807,12 @@ static void espnow_task(void *pvParameter)
                     else if(msg_type == DATA_DYNAMIC)
                     {
                         ESP_LOGI(TAG, "Receive DYNAMIC data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
-                        handle_peer_dynamic(recv_data, recv_cb->mac_addr); //todo
+                        handle_peer_dynamic(recv_data, recv_cb->mac_addr);
                     }
                     else if (msg_type == DATA_ALERT)
                     {
                         ESP_LOGI(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
-                        handle_peer_alert(recv_data, recv_cb->mac_addr); //todo
+                        handle_peer_alert(recv_data, recv_cb->mac_addr); 
                     }
                     else
                         ESP_LOGI(TAG, "Receive unexpected message type %d data from: "MACSTR"", msg_type, MAC2STR(recv_cb->mac_addr));
@@ -939,13 +918,13 @@ static void wifi_mesh_lite_task(void *pvParameters)
                         ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
                     {
                         //meshlite send dynamic payload upon changes or max time
-                        send_dynamic_payload(self_mac);
+                        send_dynamic_payload();
                         lastDynamic = xTaskGetTickCount();
                     }
                     if (alert_payload_changes(&previous_alert_payload))
                     {
                         //meshlite send alert payload upon changes
-                        send_alert_payload(self_mac);
+                        send_alert_payload();
                     }
                 }
                 else
@@ -1109,7 +1088,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
     switch (event_id)
     {
         case ESP_MESH_LITE_EVENT_NODE_JOIN:
-            ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_NODE_JOIN>");
+            ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_JOIN>");
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             is_mesh_connected = true;
             if (!is_root_node && (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)) {
@@ -1117,12 +1096,12 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             }
             break;
         case ESP_MESH_LITE_EVENT_NODE_LEAVE:
-            ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
+            ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
             ESP_LOGI(TAG, "Node left: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             // Remove node from list
             break;
         case ESP_MESH_LITE_EVENT_NODE_CHANGE:
-            ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_NODE_CHANGE>");
+            ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_CHANGE>");
             // NEW LEVEL OR IP ADDRESS
             ESP_LOGI(TAG, "Node changed: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             xEventGroupSetBits(eventGroupHandle, MESH_FORMEDBIT);
@@ -1138,7 +1117,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             }
             break;
         case ESP_MESH_LITE_EVENT_CORE_STARTED:
-            //ESP_LOGI(TAG, "<ESP_MESH_LITE_EVENT_CORE_STARTED>");
+            ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_CORE_STARTED>");
             break;
         default:
             ESP_LOGW(TAG, "Unhandled mesh event id: %d", event_id);
@@ -1210,7 +1189,7 @@ static void wifi_init(void)
             .authmode = CONFIG_MESH_AP_AUTHMODE,
             .channel = 0, //automatically found
             .max_connection = 10,
-            .beacon_interval = 60000, //60ms
+            .beacon_interval = 60000, //60ms //todo too long!
             .dtim_period = 1, // 1 to 10 - indicates how often the AP will send DTIM beacon indicating buffered data
         },
     };
@@ -1256,6 +1235,9 @@ void wifi_mesh_init()
     esp_wifi_get_mac(ESP_IF_WIFI_STA, self_mac);
     ESP_LOGI(TAG, "Device MAC: "MACSTR, MAC2STR(self_mac));
 
+    // Init mesh-lite payloads
+    init_payloads();
+
     // Register WiFi event handler
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &ip_event_handler, NULL));
 
@@ -1297,6 +1279,4 @@ void wifi_mesh_init()
     xSemaphoreGive(send_semaphore); // crucial
     
     ESP_LOGI(TAG, "ESP-MESH-LITE initialized");
-
-    //todo: use list of nodes instead of mesh lite events!
 }

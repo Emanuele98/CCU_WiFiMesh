@@ -28,25 +28,25 @@ static void parse_received_UART(uint8_t *rx_uart)
     }
     
     // Safely extract values
-    SAFE_GET_DOUBLE(root, "temperature1", self_dynamic_payload.temp1, 0.0);
-    SAFE_GET_DOUBLE(root, "temperature2", self_dynamic_payload.temp2, 0.0);
-    SAFE_GET_DOUBLE(root, "voltage", self_dynamic_payload.voltage, 0.0);
-    SAFE_GET_DOUBLE(root, "current", self_dynamic_payload.current, 0.0);
+    SAFE_GET_DOUBLE(root, "temperature1", self_dynamic_payload.TX.temp1, 0.0);
+    SAFE_GET_DOUBLE(root, "temperature2", self_dynamic_payload.TX.temp2, 0.0);
+    SAFE_GET_DOUBLE(root, "voltage", self_dynamic_payload.TX.voltage, 0.0);
+    SAFE_GET_DOUBLE(root, "current", self_dynamic_payload.TX.current, 0.0);
     
     alertType_t alertType = NONE;
     SAFE_GET_INT(root, "alert", alertType, NONE);
     
     // Handle alert
     if (alertType == OV)
-        self_alert_payload.internal.overvoltage = 1;
+        self_alert_payload.TX.TX_internal.overvoltage = 1;
     else if (alertType == OC)
-        self_alert_payload.internal.overcurrent = 1;
+        self_alert_payload.TX.TX_internal.overcurrent = 1;
     else if (alertType == OT)
-        self_alert_payload.internal.overtemperature = 1;
+        self_alert_payload.TX.TX_internal.overtemperature = 1;
     else if ((alertType == HS) || (alertType == DC))
-        self_alert_payload.internal.F = 1;
+        self_alert_payload.TX.TX_internal.FOD = 1;
 
-    if (self_alert_payload.all_flags) {
+    if (self_alert_payload.TX.TX_all_flags) {
         ESP_LOGE(TAG, "ALERT: %d", alertType);
         write_STM_command(SWITCH_OFF);
     }
