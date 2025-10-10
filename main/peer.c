@@ -33,8 +33,7 @@ void init_HW()
         RX_init_hw();
     }
 
-    /*
-
+    /* //Testing
     // print sensor readings
     while(1)
     {
@@ -50,7 +49,7 @@ void init_HW()
         }
         vTaskDelay(2000);
     }
-        */
+    */
 }
 
 void allLocalizationTxPeersOFF()

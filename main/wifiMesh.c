@@ -999,116 +999,15 @@ static void handle_mesh_changes_timercb(TimerHandle_t timer)
     ESP_LOGI(TAG, "System information -- layer: %d, self mac: " MACSTR "", 
              esp_mesh_lite_get_level(), MAC2STR(sta_mac));
 
-    // Static variables to track previous state
-    static esp_mesh_lite_node_info_t *previous_nodes = NULL;
-    static uint32_t previous_size = 0;
-    static bool first_run = true;
-
-    // Get current node list
-    uint32_t current_size = 0;
-    const node_info_list_t *node = esp_mesh_lite_get_nodes_list(&current_size);
-    
-    printf("MeshLite nodes %ld:\r\n", current_size);
-
-    // Build current snapshot while printing (single pass)
-    esp_mesh_lite_node_info_t *current_nodes = NULL;
-    if (current_size > 0) {
-        current_nodes = (esp_mesh_lite_node_info_t *)malloc(sizeof(esp_mesh_lite_node_info_t) * current_size);
-        if (current_nodes == NULL) {
-            ESP_LOGE(TAG, "Failed to allocate memory for current node snapshot");
-            return; // Keep previous state, retry next time
-        }
-
-        const node_info_list_t *temp_node = node;
-        for (uint32_t i = 0; i < current_size && temp_node != NULL; i++) {
-            // Copy node data
-            memcpy(&current_nodes[i], temp_node->node, sizeof(esp_mesh_lite_node_info_t));
-            
-            // Print node info
-            struct in_addr ip_struct;
-            ip_struct.s_addr = temp_node->node->ip_addr;
-            printf(" Level: %d -- MAC: " MACSTR " -- IP: %s -- TTL: %ld\r\n", 
-                   temp_node->node->level, MAC2STR(temp_node->node->mac_addr), 
-                   inet_ntoa(ip_struct), temp_node->ttl);
-            
-            temp_node = temp_node->next;
-        }
+    uint32_t size = 0;
+    const node_info_list_t *node = esp_mesh_lite_get_nodes_list(&size);
+    printf("MeshLite nodes %ld:\r\n", size);
+    for (uint32_t loop = 0; (loop < size) && (node != NULL); loop++) {
+        struct in_addr ip_struct;
+        ip_struct.s_addr = node->node->ip_addr;
+        printf("%ld: Level %d, MAC "MACSTR", %s, TTL %ld\r\n" , loop + 1, node->node->level, MAC2STR(node->node->mac_addr), inet_ntoa(ip_struct), node->ttl);
+        node = node->next;
     }
-
-    // Detect changes
-    bool nodes_changed = false;
-    
-    if (first_run) {
-        nodes_changed = (current_size > 0);
-        first_run = false;
-        ESP_LOGI(TAG, "First run - %ld nodes discovered", current_size);
-    } else if (current_size != previous_size) {
-        nodes_changed = true;
-        ESP_LOGI(TAG, "Node count changed: %ld -> %ld", previous_size, current_size);
-    } else if (current_size > 0 && previous_nodes != NULL && current_nodes != NULL) {
-        // Same size - use optimized comparison with early exit
-        // Check for new/changed nodes
-        for (uint32_t i = 0; i < current_size && !nodes_changed; i++) {
-            bool found = false;
-            for (uint32_t j = 0; j < previous_size; j++) {
-                if (memcmp(current_nodes[i].mac_addr, previous_nodes[j].mac_addr, ETH_HWADDR_LEN) == 0) {
-                    found = true;
-                    // Check if properties changed
-                    if (current_nodes[i].ip_addr != previous_nodes[j].ip_addr) {
-                        ESP_LOGI(TAG, "Node " MACSTR " IP changed", MAC2STR(current_nodes[i].mac_addr));
-                        nodes_changed = true;
-                    } else if (current_nodes[i].level != previous_nodes[j].level) {
-                        ESP_LOGI(TAG, "Node " MACSTR " level changed: %d -> %d", 
-                                MAC2STR(current_nodes[i].mac_addr), previous_nodes[j].level, current_nodes[i].level);
-                        nodes_changed = true;
-                    }
-                    break;
-                }
-            }
-            if (!found) {
-                ESP_LOGI(TAG, "New node joined: " MACSTR, MAC2STR(current_nodes[i].mac_addr));
-                nodes_changed = true;
-            }
-        }
-        
-        // Check for removed nodes (only if no changes found yet)
-        if (!nodes_changed) {
-            for (uint32_t i = 0; i < previous_size; i++) {
-                bool found = false;
-                for (uint32_t j = 0; j < current_size; j++) {
-                    if (memcmp(previous_nodes[i].mac_addr, current_nodes[j].mac_addr, ETH_HWADDR_LEN) == 0) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    ESP_LOGI(TAG, "Node left: " MACSTR, MAC2STR(previous_nodes[i].mac_addr));
-                    nodes_changed = true;
-                    break; // Early exit
-                }
-            }
-        }
-    }
-
-    // Handle detected changes
-    if (nodes_changed) {
-        ESP_LOGW(TAG, "Mesh topology changed - handling updates");
-        
-        // Your business logic here
-        // bool is_root_node = (esp_mesh_lite_get_level() == 1);
-        // if (!is_root_node) {
-        //     send_static_payload();
-        // } else {
-        //     peer_init();
-        // }
-    }
-
-    // Update snapshot - just swap pointers
-    if (previous_nodes != NULL) {
-        free(previous_nodes);
-    }
-    previous_nodes = current_nodes;
-    previous_size = current_size;
 }
 
 
@@ -1198,6 +1097,8 @@ void app_wifi_set_softap_info(void)
 static void wifi_init(void)
 {
     esp_wifi_set_ps(WIFI_PS_NONE);
+    // CRITICAL: Set AP to disconnect inactive stations quickly
+    esp_wifi_set_inactive_time(WIFI_IF_AP, 15);  // 15 seconds of inactivity = disconnect
 
     // Station config (yes router connection)
     wifi_config_t wifi_config = {
