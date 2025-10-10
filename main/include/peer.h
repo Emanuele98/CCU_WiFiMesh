@@ -293,6 +293,14 @@ void delete_all_peers(void);
 void allLocalizationTxPeersOFF();
 
 /**
+ * @brief Find peer with given TX position
+ * 
+ * @param pos TX position (UNIT ID)
+ * @return struct RX_peer* return NULL if none
+ */
+struct RX_peer* findRXpeerWPosition(uint8_t pos);
+
+/**
  * @brief Find the next TX peer for localization
  * @param previousTX_pos Position of the previous TX peer used for localization
  * @return struct TX_peer* Pointer to the next TX peer for localization

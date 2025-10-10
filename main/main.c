@@ -40,9 +40,8 @@ void app_main(void)
 
     /* Initialize I2C component */
     ESP_ERROR_CHECK(i2c_master_init());
-
     /* I2C scan to detect TX or RX */
-    /*
+    
     i2c_scan_bus();
     if (i2c_device_present(T1_SENSOR_ADDR) || i2c_device_present(T2_SENSOR_ADDR)) {
         UNIT_ROLE = RX;
@@ -52,7 +51,9 @@ void app_main(void)
         UNIT_ROLE = TX;
         ESP_LOGI(TAG, "TX unit detected via I2C scan");
     }
-    */
+
+    //Create group event 
+    eventGroupHandle = xEventGroupCreate();
 
     /* Initialize WiFi Mesh */
     wifi_mesh_init();
@@ -78,8 +79,7 @@ void app_main(void)
         //1. sequential switching of TX (with delay) 
         //2. rx broadcast esp-now to signal rx voltage (LOC table shared)
 
-
-    //todo: sensor monitoring
+        //? need RX struct al all? everything is grouped inside TX. No master-RX communication.
 
     //todo later: mqtt + aws management
 

@@ -146,7 +146,7 @@ static void get_adc(void *pvParameters)
                     //    ch3_voltage_mv/1000.0f, self_dynamic_payload.current);
                 }
 
-                if (self_dynamic_payload.RX.voltage > MIN_RX_VOLTAGE) {
+                if (self_dynamic_payload.RX.voltage > MIN_RX_VOLTAGE && !rxLocalized) {
                     xEventGroupSetBits(eventGroupHandle, LOCALIZEDBIT);
                 }
                 

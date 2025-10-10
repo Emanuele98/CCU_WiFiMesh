@@ -53,7 +53,7 @@
 #define OVERCURRENT_RX                      2
 #define OVERVOLTAGE_RX                      100
 #define OVERTEMPERATURE_RX                  60
-#define MIN_RX_VOLTAGE                      100 // 50
+#define MIN_RX_VOLTAGE                      50
 
 /* LOC TIMING */
 #define REACTION_TIME                       1000    //milliseconds

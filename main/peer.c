@@ -32,6 +32,25 @@ void init_HW()
         FULLY_CHARGED = false;
         RX_init_hw();
     }
+
+    /*
+
+    // print sensor readings
+    while(1)
+    {
+        if (UNIT_ROLE == TX) 
+        {
+            ESP_LOGI(TAG, "TX HW readings \n -- %.2fV, %.2fA, %.2fC, %.2fC",
+                    self_dynamic_payload.TX.voltage, self_dynamic_payload.TX.current, self_dynamic_payload.TX.temp1, self_dynamic_payload.TX.temp2);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "RX HW readings \n -- %.2fV, %.2fA, %.2fC, %.2fC",
+                self_dynamic_payload.RX.voltage, self_dynamic_payload.RX.current, self_dynamic_payload.RX.temp1, self_dynamic_payload.RX.temp2);
+        }
+        vTaskDelay(2000);
+    }
+        */
 }
 
 void allLocalizationTxPeersOFF()
@@ -51,7 +70,7 @@ struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos) {
     
     // Iterate through the list sequentially
     SLIST_FOREACH(p, &TX_peers, next) {
-        if (p->tx_status == TX_OFF) {
+        if (p->tx_status == TX_OFF || p->tx_status == TX_LOCALIZATION) {
             // Store the first available TX for wrap-around
             if (first_available == NULL) {
                 first_available = p;
@@ -71,6 +90,19 @@ struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos) {
     
     // Wrap around: return the first available TX in the list
     return first_available;
+}
+
+struct RX_peer* findRXpeerWPosition(uint8_t pos)
+{
+    struct RX_peer * p = NULL;
+
+    SLIST_FOREACH(p, &RX_peers, next) 
+    {
+        if (p->position == pos)
+            break;
+    }
+
+    return p;
 }
 
 
@@ -381,7 +413,7 @@ bool dynamic_payload_changes(mesh_dynamic_payload_t *previous)
     if (fabs(self_dynamic_payload.TX.temp2 - previous->TX.temp2) > DELTA_TEMPERATURE) 
     {
         res = true;
-        ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.TX.temp2, previous->TX.temp2);
+        //ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.TX.temp2, previous->TX.temp2);
         previous->TX.temp2 = self_dynamic_payload.TX.temp2;
     }
     if (fabs(self_dynamic_payload.RX.voltage - previous->RX.voltage) > DELTA_VOLTAGE) 
@@ -405,7 +437,7 @@ bool dynamic_payload_changes(mesh_dynamic_payload_t *previous)
     if (fabs(self_dynamic_payload.RX.temp2 - previous->RX.temp2) > DELTA_TEMPERATURE) 
     {
         res = true;
-        ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.RX.temp2, previous->RX.temp2);
+        //ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", self_dynamic_payload.RX.temp2, previous->RX.temp2);
         previous->RX.temp2 = self_dynamic_payload.RX.temp2;
     }
 

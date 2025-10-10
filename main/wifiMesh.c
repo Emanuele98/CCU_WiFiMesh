@@ -49,9 +49,7 @@ static esp_err_t static_to_root_raw_msg_response_process(uint8_t *data, uint32_t
     }
 
     mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
-    ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
-             received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
-    ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
+    ESP_LOGW(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
              received_payload->OVERVOLTAGE_limit,
              received_payload->OVERCURRENT_limit,
              received_payload->OVERTEMPERATURE_limit,
@@ -71,20 +69,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    *out_len = sizeof(mesh_static_payload_t);
-    *out_data = malloc(*out_len);
-    mesh_static_payload_t my_static_payload = { //todo change based on rx role
-                    .id = CONFIG_UNIT_ID,
-                    .type = UNIT_ROLE, 
-                    .OVERVOLTAGE_limit = OVERVOLTAGE_TX,
-                    .OVERCURRENT_limit = OVERCURRENT_TX,
-                    .OVERTEMPERATURE_limit = OVERTEMPERATURE_TX,
-                    .FOD = FOD_ACTIVE
-                };
-    memcpy(my_static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
-    memcpy(*out_data, (uint8_t*)&my_static_payload, *out_len); // set here alerts
-
-    ESP_LOGW( TAG, "Process static message");   
+    //ESP_LOGW( TAG, "Process static message");   
     
     // Process the received data
     if (len != sizeof(mesh_static_payload_t)) {
@@ -99,13 +84,31 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
-    ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
+    ESP_LOGW(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
              received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
-    ESP_LOGI(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s", //todo useless then
-             received_payload->OVERVOLTAGE_limit,
-             received_payload->OVERCURRENT_limit,
-             received_payload->OVERTEMPERATURE_limit,
-             received_payload->FOD ? "true" : "false");
+
+    // Set response to set limits (from master to child)
+    *out_len = sizeof(mesh_static_payload_t);
+    *out_data = malloc(*out_len);
+
+    mesh_static_payload_t my_static_payload;
+    memset(&my_static_payload, 0, sizeof(mesh_static_payload_t));
+
+    if (received_payload->type == TX)
+    {
+        my_static_payload.OVERVOLTAGE_limit = OVERVOLTAGE_TX;
+        my_static_payload.OVERCURRENT_limit = OVERCURRENT_TX;
+        my_static_payload.OVERTEMPERATURE_limit = OVERTEMPERATURE_TX;
+        my_static_payload.FOD = FOD_ACTIVE;
+    }
+    else
+    {
+        my_static_payload.OVERVOLTAGE_limit = OVERVOLTAGE_RX;
+        my_static_payload.OVERCURRENT_limit = OVERCURRENT_RX;
+        my_static_payload.OVERTEMPERATURE_limit = OVERTEMPERATURE_RX;
+    }
+    memcpy(my_static_payload.macAddr, self_mac, ETH_HWADDR_LEN);
+    memcpy(*out_data, (uint8_t*)&my_static_payload, *out_len); // set here alerts
 
     //* Add peer strucutre
     if (received_payload->type == TX)
@@ -832,7 +835,8 @@ static void espnow_task(void *pvParameter)
     free(espnow_data);
 }
 
-static void pass_the_baton(int8_t *previousTX_pos)
+// return true if changed - false if same
+static bool pass_the_baton(int8_t *previousTX_pos)
 {
     // Find next available TX for localization
     // If pos equal to self-pos, use local switch on function 
@@ -842,18 +846,28 @@ static void pass_the_baton(int8_t *previousTX_pos)
     struct TX_peer* p = find_next_TX_for_localization(*previousTX_pos);
     p->tx_status = TX_LOCALIZATION;
 
-    if(p->position == CONFIG_UNIT_ID)
+    bool changed = false;
+    uint8_t prev = *previousTX_pos;
+    if (prev != p->position)
+        changed = true;
+
+    if (changed)
     {
-        ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
-        write_STM_command(SWITCH_LOC);
-    }
-    else
-    {
-        ESP_LOGI(TAG, "Next TX for localization is ID %d, switching it ON via mesh-lite", p->position);
-        send_control_payload(SWITCH_LOC, p->MACaddress);
+        if(p->position == CONFIG_UNIT_ID)
+        {
+            ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
+            write_STM_command(SWITCH_LOC);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Next TX for localization is ID %d, switching it ON via mesh-lite", p->position);
+            send_control_payload(SWITCH_LOC, p->MACaddress);
+        }
     }
 
     *previousTX_pos = p->position;
+
+    return changed;
 }
 
 static void reset_the_baton()
@@ -900,11 +914,29 @@ static void wifi_mesh_lite_task(void *pvParameters)
                 if (atLeastOneRxNeedLocalization())
                 {
                     //pass the baton
-                    pass_the_baton(&previousTX_position);
-                    vTaskDelay(pdMS_TO_TICKS(100)); // Delay 
+                    bool changed = pass_the_baton(&previousTX_position);
+                    vTaskDelay(pdMS_TO_TICKS(500)); // Delay 
                     //switch off 
-                    reset_the_baton();
-                    vTaskDelay(pdMS_TO_TICKS(100)); // Delay
+                    if (changed)
+                        reset_the_baton();
+                    vTaskDelay(pdMS_TO_TICKS(500)); // Delay
+                }
+                else
+                {
+                    // print out WPT 
+                    struct RX_peer * p = findRXpeerWPosition(CONFIG_UNIT_ID);
+                    if (p != NULL)
+                    {
+                        float TXPower = self_dynamic_payload.TX.voltage * self_dynamic_payload.TX.current;
+                        float RXPower = self_dynamic_payload.RX.voltage * self_dynamic_payload.RX.current;
+                        float eff = 0;
+                        if (TXPower!=0) eff = (RXPower / TXPower) * 100;
+                        ESP_LOGI(TAG, "WPT happening! \n TX -- %.2fV, %.2fA, %.2fC, %.2fC \n RX -- %.2fV, %.2fA, %.2fC, %.2fC \n TX: %.2fW RX: %.2fW n.%2f\%",
+                            self_dynamic_payload.TX.voltage, self_dynamic_payload.TX.current, self_dynamic_payload.TX.temp1, self_dynamic_payload.TX.temp2,
+                            self_dynamic_payload.RX.voltage, self_dynamic_payload.RX.current, self_dynamic_payload.RX.temp1, self_dynamic_payload.RX.temp2, 
+                            TXPower, RXPower, eff);
+                        vTaskDelay(2000);
+                    }
                 }
                 //todo (separate task takes care of mqtt + alerts based on changes)
             }
@@ -1189,7 +1221,7 @@ static void wifi_init(void)
             .authmode = CONFIG_MESH_AP_AUTHMODE,
             .channel = 0, //automatically found
             .max_connection = 10,
-            .beacon_interval = 60000, //60ms //todo too long!
+            .beacon_interval = 100, //100 TU = 102ms (standard)
             .dtim_period = 1, // 1 to 10 - indicates how often the AP will send DTIM beacon indicating buffered data
         },
     };
@@ -1198,9 +1230,6 @@ static void wifi_init(void)
 
 void wifi_mesh_init()
 {   
-    //Create group event 
-    eventGroupHandle = xEventGroupCreate();
-
     // Initialize networking
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

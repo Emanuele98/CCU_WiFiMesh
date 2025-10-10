@@ -232,15 +232,23 @@ esp_err_t write_STM_limits()
 
 esp_err_t write_STM_command(stm32_command_t command)
 {
-    /*
     //create json file
     cJSON *root = cJSON_CreateObject();
     if (command == SWITCH_ON)
+    {
         cJSON_AddStringToObject(root, "mode", "deploy");
+        powerStatus = SWITCH_ON;
+    }
     else if (command == SWITCH_LOC)
+    {
         cJSON_AddStringToObject(root, "mode", "localization");
+        powerStatus = SWITCH_OFF;
+    }
     else if (command == SWITCH_OFF)
+    {
         cJSON_AddStringToObject(root, "mode", "off");
+        powerStatus = SWITCH_LOC;
+    }
 
     char *my_json_string = cJSON_Print(root);
     const uint8_t len = strlen(my_json_string);
@@ -254,8 +262,8 @@ esp_err_t write_STM_command(stm32_command_t command)
         return ESP_OK;
     else
         return ESP_FAIL;
-    */
 
+    /*
     //Simulate POWER
     if (command == SWITCH_ON)
     {
@@ -276,6 +284,7 @@ esp_err_t write_STM_command(stm32_command_t command)
     }
 
     return ESP_OK;
+    */
 }
 
 void uart_init(void) {
@@ -335,6 +344,6 @@ void TX_init_hw()
 
     /** Simulate POWER */
     // Reset and set GPIO as output
-    gpio_reset_pin(GPIO_OUTPUT_PIN);
-    gpio_set_direction(GPIO_OUTPUT_PIN, GPIO_MODE_INPUT_OUTPUT);
+    //gpio_reset_pin(GPIO_OUTPUT_PIN);
+    //gpio_set_direction(GPIO_OUTPUT_PIN, GPIO_MODE_INPUT_OUTPUT);
 }
