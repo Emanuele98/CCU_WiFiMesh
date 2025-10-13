@@ -20,8 +20,8 @@ void print_firmware_version(void)
 
 void app_main(void)
 {
-    //! Default
-    UNIT_ROLE = RX;
+    //! Default (for simulation avoiding I2C scan)
+    UNIT_ROLE = TX;
 
     print_firmware_version();
 

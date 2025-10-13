@@ -3,6 +3,11 @@
 
 #include "util.h"
 
+// Delta on sensor-values for sending updates
+#define DELTA_VOLTAGE 10.0
+#define DELTA_CURRENT 1
+#define DELTA_TEMPERATURE 1.0
+
 typedef enum {
     TX,        //TX UNIT
     RX         //RX UNIT
@@ -170,9 +175,12 @@ struct TX_peer
 
     /** Peripheral payloads. */
     mesh_static_payload_t *static_payload;
-    mesh_dynamic_payload_t *dynamic_payload;
+    mesh_dynamic_payload_t *dynamic_payload, *previous_dynamic_payload; // previous is used for comparison on MQTT level
     mesh_alert_payload_t  *alert_payload;
     mesh_tuning_params_t *tuning_params;
+
+    /* Time variable */
+    uint32_t lastDynamicPublished;
 };
 
 /**
@@ -197,15 +205,31 @@ struct RX_peer
 
     /** Peripheral payloads. */
     mesh_static_payload_t *static_payload;
-    mesh_dynamic_payload_t *dynamic_payload;
+    mesh_dynamic_payload_t *dynamic_payload, *previous_dynamic_payload; // previous is used for comparison on MQTT level
     mesh_alert_payload_t  *alert_payload;
+
+    /* Time variable */
+    uint32_t lastDynamicPublished;
 };
+
+SLIST_HEAD(RX_peer_list, RX_peer);
+SLIST_HEAD(TX_peer_list, TX_peer);
+
+extern struct RX_peer_list RX_peers;
+extern struct TX_peer_list TX_peers;
+
+// Mutexes for thread safety
+extern SemaphoreHandle_t RX_peers_mutex;
+extern SemaphoreHandle_t TX_peers_mutex;
 
 //Self-structures
 extern mesh_static_payload_t self_static_payload;
 extern mesh_dynamic_payload_t self_dynamic_payload;
 extern mesh_alert_payload_t self_alert_payload;
 extern mesh_tuning_params_t self_tuning_params;
+
+extern mesh_dynamic_payload_t self_previous_dynamic_payload;
+extern mesh_alert_payload_t self_previous_alert_payload;
 
 /**
  * @brief Initialize hardware components
@@ -307,23 +331,14 @@ struct RX_peer* findRXpeerWPosition(uint8_t pos);
  */
 struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos);
 
-/**
- * @brief Check if the dynamic payload has changed compared to the previous one
- * 
- * @param previous Previous dynamic payload to compare with
- * @return true 
- * @return false 
+ /**
+ * @brief Compare two payloads to detect changes
  */
-bool dynamic_payload_changes(mesh_dynamic_payload_t *previous);
+bool dynamic_payload_changed(mesh_dynamic_payload_t *current, 
+                                    mesh_dynamic_payload_t *previous);
 
-/**
- * @brief Check if the alert payload has changed compared to the previous one
- * 
- * @param previous Previous alert payload to compare with
- * @return true 
- * @return false 
- */
-bool alert_payload_changes(mesh_alert_payload_t *previous);
+bool alert_payload_changed(mesh_alert_payload_t *current, 
+                                  mesh_alert_payload_t *previous);
 
 /**
  * @brief Init payloads self-structures

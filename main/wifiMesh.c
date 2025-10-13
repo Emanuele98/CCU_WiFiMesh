@@ -900,8 +900,6 @@ static void wifi_mesh_lite_task(void *pvParameters)
     esp_mesh_lite_raw_msg_action_list_register(raw_actions);
 
     static int8_t previousTX_position = -1;
-    static mesh_dynamic_payload_t previous_dynamic_payload = {0};
-    static mesh_alert_payload_t previous_alert_payload = {0};
     static uint32_t lastDynamic = 0;
 
     while (1) 
@@ -920,10 +918,12 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     if (changed)
                         reset_the_baton();
                     vTaskDelay(pdMS_TO_TICKS(500)); // Delay
+                    //todo (make this smarter /dybrid for dead battery sceanario)
                 }
                 else
                 {
                     // print out WPT 
+                    /*
                     struct RX_peer * p = findRXpeerWPosition(CONFIG_UNIT_ID);
                     if (p != NULL)
                     {
@@ -937,6 +937,7 @@ static void wifi_mesh_lite_task(void *pvParameters)
                             TXPower, RXPower, eff);
                         vTaskDelay(2000);
                     }
+                    */
                 }
                 //todo (separate task takes care of mqtt + alerts based on changes)
             }
@@ -946,17 +947,19 @@ static void wifi_mesh_lite_task(void *pvParameters)
                 {
                     //dynamic payload upon changes and alerts
 
-                    if (dynamic_payload_changes(&previous_dynamic_payload) || 
+                    if (dynamic_payload_changed(&self_dynamic_payload, &self_previous_dynamic_payload) || 
                         ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
                     {
                         //meshlite send dynamic payload upon changes or max time
                         send_dynamic_payload();
+                        self_previous_dynamic_payload = self_dynamic_payload;
                         lastDynamic = xTaskGetTickCount();
                     }
-                    if (alert_payload_changes(&previous_alert_payload))
+                    if (alert_payload_changed(&self_alert_payload, &self_previous_alert_payload))
                     {
                         //meshlite send alert payload upon changes
                         send_alert_payload();
+                        self_previous_alert_payload = self_alert_payload;
                     }
                 }
                 else
@@ -969,17 +972,19 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     }
                     else
                     {
-                        if (dynamic_payload_changes(&previous_dynamic_payload) || 
+                        if (dynamic_payload_changed(&self_dynamic_payload, &self_previous_dynamic_payload) || 
                             ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
                         {           
                             //espnow send dynamic payload upon changes or min time
                             espnow_send_message(DATA_DYNAMIC, TX_parent_mac);
+                            self_previous_dynamic_payload = self_dynamic_payload;
                             lastDynamic = xTaskGetTickCount();
                         }
-                        if (alert_payload_changes(&previous_alert_payload))
+                        if (alert_payload_changed(&self_alert_payload, &self_previous_alert_payload))
                         {
                             //espnow send alert payload upon changes
                             espnow_send_message(DATA_ALERT, TX_parent_mac);
+                            self_previous_alert_payload = self_alert_payload;
                         }
                     }
                 }
@@ -1030,6 +1035,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
             ESP_LOGI(TAG, "Node left: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             // Remove node from list
+            peer_delete(node_info->mac_addr);
             break;
         case ESP_MESH_LITE_EVENT_NODE_CHANGE:
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_CHANGE>");
@@ -1042,13 +1048,22 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             // if not a root, send static payload to root
             if (!is_root_node && (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)) {
                 send_static_payload();
-            } else if (is_root_node) { 
+            } else if (is_root_node) 
+            { 
                 // Initialize peer management (adding myself)
                 peer_init();
+
+                // Initialize MQTT client manager
+                esp_err_t ret = mqtt_client_manager_init();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to initialize MQTT client manager");
+                } else {
+                    ESP_LOGI(TAG, "MQTT client manager started successfully");
+                }
             }
             break;
         case ESP_MESH_LITE_EVENT_CORE_STARTED:
-            ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_CORE_STARTED>");
+            //ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_CORE_STARTED>");
             break;
         default:
             ESP_LOGW(TAG, "Unhandled mesh event id: %d", event_id);

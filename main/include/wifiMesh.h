@@ -3,6 +3,7 @@
 
 #include "util.h"
 #include "peer.h"
+#include "mqtt_client_manager.h"
 
 /* Mesh-LITE*/
 #define TO_ROOT_STATIC_MSG_ID               0x1000
