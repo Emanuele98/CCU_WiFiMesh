@@ -222,6 +222,33 @@ extern struct TX_peer_list TX_peers;
 extern SemaphoreHandle_t RX_peers_mutex;
 extern SemaphoreHandle_t TX_peers_mutex;
 
+// =============================================================================
+// SCOPED MUTEX GUARDS
+// =============================================================================
+// Usage: Wrap code that accesses peer lists in these blocks
+// ⚠️ WARNING: Do NOT use return/break/continue inside these blocks!
+//            The mutex will not be released. Use goto instead if needed.
+// =============================================================================
+
+#define WITH_TX_PEERS_LOCKED \
+    for(int _tx_locked = (xSemaphoreTake(TX_peers_mutex, portMAX_DELAY) == pdTRUE); \
+        _tx_locked; \
+        xSemaphoreGive(TX_peers_mutex), _tx_locked = 0)
+
+#define WITH_RX_PEERS_LOCKED \
+    for(int _rx_locked = (xSemaphoreTake(RX_peers_mutex, portMAX_DELAY) == pdTRUE); \
+        _rx_locked; \
+        xSemaphoreGive(RX_peers_mutex), _rx_locked = 0)
+
+// For operations needing both lists (always acquires RX then TX to prevent deadlock)
+#define WITH_BOTH_PEERS_LOCKED \
+    for(int _rx_locked = (xSemaphoreTake(RX_peers_mutex, portMAX_DELAY) == pdTRUE); \
+        _rx_locked; \
+        xSemaphoreGive(RX_peers_mutex), _rx_locked = 0) \
+    for(int _tx_locked = (xSemaphoreTake(TX_peers_mutex, portMAX_DELAY) == pdTRUE); \
+        _tx_locked; \
+        xSemaphoreGive(TX_peers_mutex), _tx_locked = 0)
+
 //Self-structures
 extern mesh_static_payload_t self_static_payload;
 extern mesh_dynamic_payload_t self_dynamic_payload;

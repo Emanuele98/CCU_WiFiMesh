@@ -76,7 +76,7 @@ static void publish_tx_peer_data(struct TX_peer *peer)
         if (publish_binary_data(topic, peer->dynamic_payload, 
                                sizeof(mesh_dynamic_payload_t)) == ESP_OK)
         {
-            peer->previous_dynamic_payload = peer->dynamic_payload;
+            *peer->previous_dynamic_payload = *peer->dynamic_payload;
             peer->lastDynamicPublished = current_time;
             //ESP_LOGI(TAG, "Published TX%d dynamic payload (V:%.2f, I:%.2f)", 
             //         peer->id, peer->dynamic_payload->TX.voltage, 
@@ -122,7 +122,7 @@ static void publish_rx_peer_data(struct RX_peer *peer)
         if (publish_binary_data(topic, peer->dynamic_payload, 
                                sizeof(mesh_dynamic_payload_t)) == ESP_OK)
         {
-            peer->previous_dynamic_payload = peer->dynamic_payload;
+            *peer->previous_dynamic_payload = *peer->dynamic_payload;
             peer->lastDynamicPublished = current_time;
             //ESP_LOGI(TAG, "Published RX%d dynamic payload (V:%.2f, I:%.2f)", 
             //         peer->id, peer->dynamic_payload->RX.voltage, 

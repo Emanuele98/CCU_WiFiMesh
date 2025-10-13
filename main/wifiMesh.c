@@ -116,7 +116,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         struct TX_peer *p = TX_peer_add(received_payload->macAddr);
         if (p != NULL)
         {
-            p->static_payload = received_payload;
+            *p->static_payload = *received_payload;
             p->id = received_payload->id;
             p->position = p->id; // Position same as ID for TX
             ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload->id);
@@ -127,7 +127,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         struct RX_peer *p = RX_peer_add(received_payload->macAddr); 
         if (p != NULL)
         {
-            p->static_payload = received_payload;
+            *p->static_payload = *received_payload;
             p->id = received_payload->id;
             p->position = -1; // Position unknown (variable) for RX
             ESP_LOGI(TAG, "RX Peer structure added! ID: %d", p->static_payload->id);
