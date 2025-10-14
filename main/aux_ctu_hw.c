@@ -7,7 +7,7 @@ TimerHandle_t connected_leds_timer, misaligned_leds_timer, charging_leds_timer, 
 
 static float last_duty_cycle = 0.30;
 
-stm32_command_t powerStatus = SWITCH_OFF;
+stm32_command_t selfPowerStatus = SWITCH_OFF;
 
 static const char* TAG = "HARDWARE";
 
@@ -47,8 +47,9 @@ static void parse_received_UART(uint8_t *rx_uart)
         self_alert_payload.TX.TX_internal.FOD = 1;
 
     if (self_alert_payload.TX.TX_all_flags) {
-        ESP_LOGE(TAG, "ALERT: %d", alertType);
-        write_STM_command(SWITCH_OFF);
+        //ESP_LOGE(TAG, "ALERT: %d", alertType);
+        if (selfPowerStatus != SWITCH_OFF)
+            write_STM_command(SWITCH_OFF);
     }
 
     // Get tuning parameters
@@ -237,17 +238,17 @@ esp_err_t write_STM_command(stm32_command_t command)
     if (command == SWITCH_ON)
     {
         cJSON_AddStringToObject(root, "mode", "deploy");
-        powerStatus = SWITCH_ON;
+        selfPowerStatus = SWITCH_ON;
     }
     else if (command == SWITCH_LOC)
     {
         cJSON_AddStringToObject(root, "mode", "localization");
-        powerStatus = SWITCH_OFF;
+        selfPowerStatus = SWITCH_OFF;
     }
     else if (command == SWITCH_OFF)
     {
         cJSON_AddStringToObject(root, "mode", "off");
-        powerStatus = SWITCH_LOC;
+        selfPowerStatus = SWITCH_LOC;
     }
 
     char *my_json_string = cJSON_Print(root);
@@ -268,19 +269,19 @@ esp_err_t write_STM_command(stm32_command_t command)
     if (command == SWITCH_ON)
     {
         gpio_set_level(GPIO_OUTPUT_PIN, 1);
-        powerStatus = SWITCH_ON;
+        selfPowerStatus = SWITCH_ON;
     }
     else if (command == SWITCH_OFF)
     {
         //ESP_LOGW(TAG, "OFF");
         gpio_set_level(GPIO_OUTPUT_PIN, 0);
-        powerStatus = SWITCH_OFF;
+        selfPowerStatus = SWITCH_OFF;
     }
     else if (command == SWITCH_LOC)
     {
         //ESP_LOGW(TAG, "ON");
         gpio_set_level(GPIO_OUTPUT_PIN, 1); //no localization mode for now
-        powerStatus = SWITCH_LOC;
+        selfPowerStatus = SWITCH_LOC;
     }
 
     return ESP_OK;

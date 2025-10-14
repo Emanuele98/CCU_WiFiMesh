@@ -757,7 +757,7 @@ static void espnow_task(void *pvParameter)
                             if (is_root_node)
                             {
                                 // TX will tell the RX via ESP-NOW
-                                if (powerStatus == SWITCH_LOC)
+                                if (selfPowerStatus == SWITCH_LOC)
                                 {
                                     ESP_LOGI(TAG, "RX has been located to this TX (which is also the master)!");
                                     // Save peer and communicate via ESP-NOW
@@ -779,7 +779,7 @@ static void espnow_task(void *pvParameter)
                                 }
                             }
                             //Case 3 - I am TX - am I active? yes then tell master - no then discard
-                            else if (powerStatus == SWITCH_LOC)
+                            else if (selfPowerStatus == SWITCH_LOC)
                             {
                                 ESP_LOGI(TAG, "RX has been located to this pad!");
                                 // Save peer and communicate via ESP-NOW
@@ -880,6 +880,54 @@ static void reset_the_baton()
     allLocalizationTxPeersOFF();
 }
 
+static void alert_task(void *pvParameters)
+{    
+    while (1) 
+    {
+        // Check for alert
+        if (self_alert_payload.TX.TX_all_flags || self_alert_payload.RX.RX_all_flags) 
+        {   
+            // Log specific alerts
+            if (self_alert_payload.TX.TX_all_flags) {
+                if (self_alert_payload.TX.TX_internal.overvoltage)
+                    ESP_LOGE(TAG, "TX OVERVOLTAGE ALERT!");
+                if (self_alert_payload.TX.TX_internal.overcurrent)
+                    ESP_LOGE(TAG, "TX OVERCURRENT ALERT!");
+                if (self_alert_payload.TX.TX_internal.overtemperature)
+                    ESP_LOGE(TAG, "TX OVERTEMPERATURE ALERT!");
+                if (self_alert_payload.TX.TX_internal.FOD)
+                    ESP_LOGE(TAG, "TX FOD ALERT!");
+            } else if (self_alert_payload.RX.RX_all_flags)
+            {
+                if (self_alert_payload.RX.RX_internal.overvoltage)
+                    ESP_LOGE(TAG, "RX OVERVOLTAGE ALERT!");
+                if (self_alert_payload.RX.RX_internal.overcurrent)
+                    ESP_LOGE(TAG, "RX OVERCURRENT ALERT!");
+                if (self_alert_payload.RX.RX_internal.overtemperature)
+                    ESP_LOGE(TAG, "RX OVERTEMPERATURE ALERT!");
+                if (self_alert_payload.RX.RX_internal.FullyCharged)
+                    ESP_LOGI(TAG, "RX FULLY CHARGED!");
+            }
+            
+            // ESP-NOW for RX -> TX parent
+            if (UNIT_ROLE == RX && rxLocalized) 
+            {
+                ESP_LOGW(TAG, "Sending CRITICAL alert via ESP-NOW");
+                espnow_send_message(DATA_ALERT, TX_parent_mac);
+            } 
+            else if (UNIT_ROLE == TX && !is_root_node) // Mesh-Lite for TX -> Master
+            {
+                ESP_LOGW(TAG, "Sending alert via Mesh-Lite");
+                send_alert_payload();
+            }
+            
+            // Reset alert flags after sending
+            self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1)); //minimum wait
+    }
+}
 
 static void wifi_mesh_lite_task(void *pvParameters)
 {
@@ -918,48 +966,20 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     if (changed)
                         reset_the_baton();
                     vTaskDelay(pdMS_TO_TICKS(500)); // Delay
-                    //todo (make this smarter /dybrid for dead battery sceanario)
+                    //todo (make this smarter /hybrid for dead battery sceanario)
                 }
-                else
-                {
-                    // print out WPT 
-                    /*
-                    struct RX_peer * p = findRXpeerWPosition(CONFIG_UNIT_ID);
-                    if (p != NULL)
-                    {
-                        float TXPower = self_dynamic_payload.TX.voltage * self_dynamic_payload.TX.current;
-                        float RXPower = self_dynamic_payload.RX.voltage * self_dynamic_payload.RX.current;
-                        float eff = 0;
-                        if (TXPower!=0) eff = (RXPower / TXPower) * 100;
-                        ESP_LOGI(TAG, "WPT happening! \n TX -- %.2fV, %.2fA, %.2fC, %.2fC \n RX -- %.2fV, %.2fA, %.2fC, %.2fC \n TX: %.2fW RX: %.2fW n.%2f\%",
-                            self_dynamic_payload.TX.voltage, self_dynamic_payload.TX.current, self_dynamic_payload.TX.temp1, self_dynamic_payload.TX.temp2,
-                            self_dynamic_payload.RX.voltage, self_dynamic_payload.RX.current, self_dynamic_payload.RX.temp1, self_dynamic_payload.RX.temp2, 
-                            TXPower, RXPower, eff);
-                        vTaskDelay(2000);
-                    }
-                    */
-                }
-                //todo (separate task takes care of mqtt + alerts based on changes)
             }
             else
             {
                 if(UNIT_ROLE == TX)
                 {
-                    //dynamic payload upon changes and alerts
-
+                    //meshlite send dynamic payload upon changes or min time
                     if (dynamic_payload_changed(&self_dynamic_payload, &self_previous_dynamic_payload) || 
                         ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
                     {
-                        //meshlite send dynamic payload upon changes or max time
                         send_dynamic_payload();
                         self_previous_dynamic_payload = self_dynamic_payload;
                         lastDynamic = xTaskGetTickCount();
-                    }
-                    if (alert_payload_changed(&self_alert_payload, &self_previous_alert_payload))
-                    {
-                        //meshlite send alert payload upon changes
-                        send_alert_payload();
-                        self_previous_alert_payload = self_alert_payload;
                     }
                 }
                 else
@@ -972,25 +992,19 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     }
                     else
                     {
+                        //espnow send dynamic payload upon changes or min time
                         if (dynamic_payload_changed(&self_dynamic_payload, &self_previous_dynamic_payload) || 
                             ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
                         {           
-                            //espnow send dynamic payload upon changes or min time
                             espnow_send_message(DATA_DYNAMIC, TX_parent_mac);
                             self_previous_dynamic_payload = self_dynamic_payload;
                             lastDynamic = xTaskGetTickCount();
-                        }
-                        if (alert_payload_changed(&self_alert_payload, &self_previous_alert_payload))
-                        {
-                            //espnow send alert payload upon changes
-                            espnow_send_message(DATA_ALERT, TX_parent_mac);
-                            self_previous_alert_payload = self_alert_payload;
                         }
                     }
                 }
             } 
         }
-        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 10ms
+        vTaskDelay(pdMS_TO_TICKS(10)); // Delay for 100ms
     }
 
     vTaskDelete(NULL);
@@ -1214,7 +1228,11 @@ void wifi_mesh_init()
         return;
     }
 
+    // Create ESPNOW task
     ESP_ERROR_CHECK(xTaskCreate(espnow_task, "espnow_task", 4096, NULL, 8, NULL));
+
+    // Create alert high priority task
+    ESP_ERROR_CHECK(xTaskCreate(alert_task, "alert_task", 4096, NULL, 11, NULL));
 
     send_semaphore = xSemaphoreCreateBinary();
     if (send_semaphore == NULL) {

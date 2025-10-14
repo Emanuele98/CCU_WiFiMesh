@@ -10,12 +10,9 @@ SemaphoreHandle_t TX_peers_mutex = NULL;
 
 mesh_static_payload_t self_static_payload = {0};
 mesh_dynamic_payload_t self_dynamic_payload = {0};
+mesh_dynamic_payload_t self_previous_dynamic_payload = {0};
 mesh_alert_payload_t self_alert_payload = {0};
 mesh_tuning_params_t self_tuning_params = {0};
-
-// self structure for comparison of locally shared data
-mesh_dynamic_payload_t self_previous_dynamic_payload = {0};
-mesh_alert_payload_t self_previous_alert_payload = {0};
 
 peer_type UNIT_ROLE;
 
@@ -353,14 +350,16 @@ void delete_all_peers(void)
             RX_p = SLIST_FIRST(&RX_peers);
             SLIST_REMOVE_HEAD(&RX_peers, next);
             
-            if (RX_p->static_payload)
-                free(RX_p->static_payload);
-            if (RX_p->dynamic_payload)
-                free(RX_p->dynamic_payload);
-            if (RX_p->previous_dynamic_payload)
-                free(RX_p->previous_dynamic_payload);
-            if (RX_p->alert_payload)
-                free(RX_p->alert_payload);
+            if (memcmp(RX_p->MACaddress, self_mac, 6) != 0) {
+                if (RX_p->static_payload)
+                    free(RX_p->static_payload);
+                if (RX_p->dynamic_payload)
+                    free(RX_p->dynamic_payload);
+                if (RX_p->previous_dynamic_payload)
+                    free(RX_p->previous_dynamic_payload);
+                if (RX_p->alert_payload)
+                    free(RX_p->alert_payload);
+            }
             free(RX_p);
         }
     }
@@ -607,14 +606,9 @@ bool dynamic_payload_changed(mesh_dynamic_payload_t *current,
     return res;
 }
 
-bool alert_payload_changed(mesh_alert_payload_t *current, 
-                                  mesh_alert_payload_t *previous)
+bool alert_payload_check(mesh_alert_payload_t *current)
 {
-    bool res = (current->TX.TX_all_flags != previous->TX.TX_all_flags || current->RX.RX_all_flags != previous->RX.RX_all_flags);
-
-    ESP_LOGI(TAG, "PREVIOUS TX: OV %d, OC %d, OT %d, FOD %d \n RX: OV: %d, OC %d, OT %d FC %d",
-            current->TX.TX_all_flags, previous->TX.TX_all_flags, current->RX.RX_all_flags, previous->RX.RX_all_flags,
-            previous->RX.RX_internal.overvoltage, previous->RX.RX_internal.overcurrent, previous->RX.RX_internal.overtemperature, previous->RX.RX_internal.FullyCharged);
+    bool res = (current->TX.TX_all_flags || current->RX.RX_all_flags);
 
     return res;
 }

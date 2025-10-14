@@ -174,6 +174,7 @@ static void get_adc(void *pvParameters)
         if (self_dynamic_payload.RX.temp1 > OVER_TEMPERATURE || self_dynamic_payload.RX.temp2 > OVER_TEMPERATURE) {
             self_alert_payload.RX.RX_internal.overtemperature = 1;
         }
+        //todo fully charged check
         
         // Sample at ~1kHz (1ms delay) for equivalent to 5kHz/2 channels in continuous mode
         vTaskDelay(pdMS_TO_TICKS(1));

@@ -16,12 +16,11 @@ static TaskHandle_t mqtt_publish_task_handle = NULL;
 /**
  * @brief Build topic string for a given peer and data type
  */
-static void build_topic(char *topic_buf, size_t buf_len, peer_type type, 
+static void build_topic(char *topic_buf, size_t buf_len, 
                        uint8_t node_id, const char *data_type)
 {
-    const char *type_str = (type == TX) ? "tx" : "rx";
-    snprintf(topic_buf, buf_len, "%s/%s/%d/%s", 
-             MQTT_TOPIC_BASE, type_str, node_id, data_type);
+    snprintf(topic_buf, buf_len, "%s/%d/%s", 
+             MQTT_TOPIC_BASE, node_id, data_type);
 }
 
 /**
@@ -71,7 +70,7 @@ static void publish_tx_peer_data(struct TX_peer *peer)
     if (dynamic_payload_changed(peer->dynamic_payload, peer->previous_dynamic_payload) ||
         should_publish_by_time(peer->lastDynamicPublished))
     {
-        build_topic(topic, sizeof(topic), TX, peer->id, "dynamic");
+        build_topic(topic, sizeof(topic), peer->id, "dynamic");
         
         if (publish_binary_data(topic, peer->dynamic_payload, 
                                sizeof(mesh_dynamic_payload_t)) == ESP_OK)
@@ -84,24 +83,21 @@ static void publish_tx_peer_data(struct TX_peer *peer)
         }
     }
     
-    //todo interrupt
-    /*
-    // Publish ALERT payload // todo interrupt? or maybe not for monitoring?
-    if (alert_payload_changed(peer->alert_payload, peer->alert_payload))
+    // Publish ALERT payload (only for monitoring so not critical)
+    if (alert_payload_check(peer->alert_payload))
     {
-        build_topic(topic, sizeof(topic), TX, peer->id, "alerts");
+        build_topic(topic, sizeof(topic), peer->id, "alerts");
         
         if (publish_binary_data(topic, peer->alert_payload, 
                                sizeof(mesh_alert_payload_t)) == ESP_OK)
         {
-            peer->previous_dynamic_payload = peer->alert_payload;
+            memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
             
             if (peer->alert_payload->TX.TX_all_flags || peer->alert_payload->RX.RX_all_flags) {
-                ESP_LOGW(TAG, "Published TX%d ALERT payload!", peer->id);
+                ESP_LOGW(TAG, "Published TX-%d ALERT payload!", peer->id);
             }
         }
     }    
-        */
 }
 
 /*******************************************************
@@ -117,7 +113,7 @@ static void publish_rx_peer_data(struct RX_peer *peer)
     if (dynamic_payload_changed(peer->dynamic_payload, peer->previous_dynamic_payload) ||
         should_publish_by_time(peer->lastDynamicPublished))
     {
-        build_topic(topic, sizeof(topic), RX, peer->id, "dynamic");
+        build_topic(topic, sizeof(topic), peer->id, "dynamic");
         
         if (publish_binary_data(topic, peer->dynamic_payload, 
                                sizeof(mesh_dynamic_payload_t)) == ESP_OK)
@@ -130,26 +126,21 @@ static void publish_rx_peer_data(struct RX_peer *peer)
         }
     }
     
-    // todo interrupt
-    /*
-    // Publish ALERT payload
-    if (alert_payload_changed(peer->alert_payload, peer->previous_al))
+    // Publish ALERT payload (only for monitoring so not critical)
+    if (alert_payload_check(peer->alert_payload))
     {
-        build_topic(topic, sizeof(topic), RX, peer->id, "alerts");
+        build_topic(topic, sizeof(topic), peer->id, "alerts");
         
         if (publish_binary_data(topic, peer->alert_payload, 
                                sizeof(mesh_alert_payload_t)) == ESP_OK)
         {
-            tracker->last_alert = *peer->alert_payload;
-            tracker->last_alert_publish_time = current_time;
-            tracker->alert_published_once = true;
-            
+            memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
+
             if (peer->alert_payload->RX.RX_all_flags) {
-                ESP_LOGW(TAG, "Published RX%d ALERT payload!", peer->id);
+                ESP_LOGW(TAG, "Published RX-%d ALERT payload!", peer->id);
             }
         }
     }
-        */
 }
 
 /*******************************************************

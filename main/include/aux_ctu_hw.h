@@ -53,7 +53,7 @@ typedef enum
     SWITCH_ON,
 } stm32_command_t;
 
-extern stm32_command_t powerStatus;
+extern stm32_command_t selfPowerStatus;
 
 typedef enum 
 {

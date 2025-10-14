@@ -252,11 +252,10 @@ extern SemaphoreHandle_t TX_peers_mutex;
 //Self-structures
 extern mesh_static_payload_t self_static_payload;
 extern mesh_dynamic_payload_t self_dynamic_payload;
+extern mesh_dynamic_payload_t self_previous_dynamic_payload;
 extern mesh_alert_payload_t self_alert_payload;
 extern mesh_tuning_params_t self_tuning_params;
 
-extern mesh_dynamic_payload_t self_previous_dynamic_payload;
-extern mesh_alert_payload_t self_previous_alert_payload;
 
 /**
  * @brief Initialize hardware components
@@ -359,13 +358,16 @@ struct RX_peer* findRXpeerWPosition(uint8_t pos);
 struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos);
 
  /**
- * @brief Compare two payloads to detect changes
+ * @brief  Detect dynamic payload changes
  */
 bool dynamic_payload_changed(mesh_dynamic_payload_t *current, 
                                     mesh_dynamic_payload_t *previous);
 
-bool alert_payload_changed(mesh_alert_payload_t *current, 
-                                  mesh_alert_payload_t *previous);
+/**
+ * @brief Detect alerts 
+ * 
+ */
+bool alert_payload_check(mesh_alert_payload_t *current);
 
 /**
  * @brief Init payloads self-structures
