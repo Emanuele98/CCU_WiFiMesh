@@ -1,4 +1,5 @@
 #include "include/mqtt_client_manager.h"
+#include "cJSON.h"
 
 static const char *TAG = "MQTT_CLIENT";
 
@@ -10,7 +11,152 @@ static bool mqtt_connected = false;
 static TaskHandle_t mqtt_publish_task_handle = NULL;
 
 /*******************************************************
- *                Helper Functions
+ *                JSON Helper Functions
+ *******************************************************/
+
+/**
+ * @brief Convert MAC address to string format
+ */
+static void mac_to_string(const uint8_t *mac, char *str, size_t len)
+{
+    snprintf(str, len, "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+/**
+ * @brief Create JSON string from dynamic payload
+ * 
+ * @param payload Pointer to dynamic payload struct
+ * @param node_id Unit ID to include in JSON
+ * @return char* JSON string (must be freed by caller), NULL on error
+ */
+static char* dynamic_payload_to_json(const mesh_dynamic_payload_t *payload, uint8_t node_id)
+{
+    if (!payload) {
+        ESP_LOGE(TAG, "Null payload pointer");
+        return NULL;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        ESP_LOGE(TAG, "Failed to create JSON root");
+        return NULL;
+    }
+
+    // Add unit ID
+    cJSON_AddNumberToObject(root, "unit_id", node_id);
+
+    // Create TX object
+    cJSON *tx_obj = cJSON_CreateObject();
+    if (tx_obj) {
+        char mac_str[18];
+        mac_to_string(payload->TX.macAddr, mac_str, sizeof(mac_str));
+        
+        cJSON_AddStringToObject(tx_obj, "mac", mac_str);
+        cJSON_AddNumberToObject(tx_obj, "status", payload->TX.tx_status);
+        cJSON_AddNumberToObject(tx_obj, "voltage", payload->TX.voltage);
+        cJSON_AddNumberToObject(tx_obj, "current", payload->TX.current);
+        cJSON_AddNumberToObject(tx_obj, "temp1", payload->TX.temp1);
+        cJSON_AddNumberToObject(tx_obj, "temp2", payload->TX.temp2);
+        
+        cJSON_AddItemToObject(root, "tx", tx_obj);
+    }
+
+    // Create RX object
+    cJSON *rx_obj = cJSON_CreateObject();
+    if (rx_obj) {
+        char mac_str[18];
+        mac_to_string(payload->RX.macAddr, mac_str, sizeof(mac_str));
+        
+        cJSON_AddStringToObject(rx_obj, "mac", mac_str);
+        cJSON_AddNumberToObject(rx_obj, "status", payload->RX.rx_status);
+        cJSON_AddNumberToObject(rx_obj, "voltage", payload->RX.voltage);
+        cJSON_AddNumberToObject(rx_obj, "current", payload->RX.current);
+        cJSON_AddNumberToObject(rx_obj, "temp1", payload->RX.temp1);
+        cJSON_AddNumberToObject(rx_obj, "temp2", payload->RX.temp2);
+        
+        cJSON_AddItemToObject(root, "rx", rx_obj);
+    }
+
+    // Convert to string
+    char *json_string = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    
+    if (!json_string) {
+        ESP_LOGE(TAG, "Failed to print JSON");
+        return NULL;
+    }
+
+    return json_string;
+}
+
+/**
+ * @brief Create JSON string from alert payload
+ * 
+ * @param payload Pointer to alert payload struct
+ * @param node_id Unit ID to include in JSON
+ * @return char* JSON string (must be freed by caller), NULL on error
+ */
+static char* alert_payload_to_json(const mesh_alert_payload_t *payload, uint8_t node_id)
+{
+    if (!payload) {
+        ESP_LOGE(TAG, "Null payload pointer");
+        return NULL;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        ESP_LOGE(TAG, "Failed to create JSON root");
+        return NULL;
+    }
+
+    // Add unit ID
+    cJSON_AddNumberToObject(root, "unit_id", node_id);
+
+    // Create TX alerts object
+    cJSON *tx_obj = cJSON_CreateObject();
+    if (tx_obj) {
+        char mac_str[18];
+        mac_to_string(payload->TX.macAddr, mac_str, sizeof(mac_str));
+        
+        cJSON_AddStringToObject(tx_obj, "mac", mac_str);
+        cJSON_AddBoolToObject(tx_obj, "overtemperature", payload->TX.TX_internal.overtemperature);
+        cJSON_AddBoolToObject(tx_obj, "overcurrent", payload->TX.TX_internal.overcurrent);
+        cJSON_AddBoolToObject(tx_obj, "overvoltage", payload->TX.TX_internal.overvoltage);
+        cJSON_AddBoolToObject(tx_obj, "fod", payload->TX.TX_internal.FOD);
+        
+        cJSON_AddItemToObject(root, "tx", tx_obj);
+    }
+
+    // Create RX alerts object
+    cJSON *rx_obj = cJSON_CreateObject();
+    if (rx_obj) {
+        char mac_str[18];
+        mac_to_string(payload->RX.macAddr, mac_str, sizeof(mac_str));
+        
+        cJSON_AddStringToObject(rx_obj, "mac", mac_str);
+        cJSON_AddBoolToObject(rx_obj, "overtemperature", payload->RX.RX_internal.overtemperature);
+        cJSON_AddBoolToObject(rx_obj, "overcurrent", payload->RX.RX_internal.overcurrent);
+        cJSON_AddBoolToObject(rx_obj, "overvoltage", payload->RX.RX_internal.overvoltage);
+        cJSON_AddBoolToObject(rx_obj, "fully_charged", payload->RX.RX_internal.FullyCharged);
+        
+        cJSON_AddItemToObject(root, "rx", rx_obj);
+    }
+
+    // Convert to string
+    char *json_string = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    
+    if (!json_string) {
+        ESP_LOGE(TAG, "Failed to print JSON");
+        return NULL;
+    }
+
+    return json_string;
+}
+
+/*******************************************************
+ *                MQTT Publishing Functions
  *******************************************************/
 
 /**
@@ -35,25 +181,29 @@ static bool should_publish_by_time(uint32_t last_publish_time)
 }
 
 /**
- * @brief Publish binary data to MQTT topic
+ * @brief Publish JSON data to MQTT topic
  */
-static esp_err_t publish_binary_data(const char *topic, const void *data, 
-                                     size_t data_len)
+static esp_err_t publish_json_data(const char *topic, const char *json_string)
 {
     if (!mqtt_connected || mqtt_client == NULL) {
         return ESP_FAIL;
     }
     
+    if (!json_string) {
+        ESP_LOGE(TAG, "Null JSON string");
+        return ESP_FAIL;
+    }
+    
     int msg_id = esp_mqtt_client_publish(mqtt_client, topic, 
-                                         (const char *)data, data_len, 
-                                         1, 0); // QoS 1, not retained
+                                         json_string, 0,  // 0 = auto-calculate length
+                                         1, 0);            // QoS 1, not retained
     
     if (msg_id == -1) {
         ESP_LOGE(TAG, "Failed to publish to topic: %s", topic);
         return ESP_FAIL;
     }
     
-    ESP_LOGD(TAG, "Published %d bytes to %s (msg_id=%d)", data_len, topic, msg_id);
+    ESP_LOGD(TAG, "Published to %s (msg_id=%d)", topic, msg_id);
     return ESP_OK;
 }
 
@@ -70,32 +220,35 @@ static void publish_tx_peer_data(struct TX_peer *peer)
     if (dynamic_payload_changed(peer->dynamic_payload, peer->previous_dynamic_payload) ||
         should_publish_by_time(peer->lastDynamicPublished))
     {
-        build_topic(topic, sizeof(topic), peer->id, "dynamic");
-        
-        if (publish_binary_data(topic, peer->dynamic_payload, 
-                               sizeof(mesh_dynamic_payload_t)) == ESP_OK)
-        {
-            *peer->previous_dynamic_payload = *peer->dynamic_payload;
-            peer->lastDynamicPublished = current_time;
-            //ESP_LOGI(TAG, "Published TX%d dynamic payload (V:%.2f, I:%.2f)", 
-            //         peer->id, peer->dynamic_payload->TX.voltage, 
-            //         peer->dynamic_payload->TX.current);
+        char *json_string = dynamic_payload_to_json(peer->dynamic_payload, peer->id);
+        if (json_string) {
+            build_topic(topic, sizeof(topic), peer->id, "dynamic");
+            
+            if (publish_json_data(topic, json_string) == ESP_OK) {
+                *peer->previous_dynamic_payload = *peer->dynamic_payload;
+                peer->lastDynamicPublished = current_time;
+                ESP_LOGI(TAG, "Published TX-%d dynamic: %s", peer->id, json_string);
+            }
+            
+            cJSON_free(json_string);  // Free the JSON string
         }
     }
     
-    // Publish ALERT payload (only for monitoring so not critical)
+    // Publish ALERT payload (only when alerts are active)
     if (alert_payload_check(peer->alert_payload))
     {
-        build_topic(topic, sizeof(topic), peer->id, "alerts");
-        
-        if (publish_binary_data(topic, peer->alert_payload, 
-                               sizeof(mesh_alert_payload_t)) == ESP_OK)
-        {
-            memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
+        char *json_string = alert_payload_to_json(peer->alert_payload, peer->id);
+        if (json_string) {
+            build_topic(topic, sizeof(topic), peer->id, "alerts");
             
-            if (peer->alert_payload->TX.TX_all_flags || peer->alert_payload->RX.RX_all_flags) {
-                ESP_LOGW(TAG, "Published TX-%d ALERT payload!", peer->id);
+            if (publish_json_data(topic, json_string) == ESP_OK) {
+                if (peer->alert_payload->TX.TX_all_flags || peer->alert_payload->RX.RX_all_flags) {
+                    ESP_LOGW(TAG, "Published TX-%d ALERT: %s", peer->id, json_string);
+                }
+                memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
             }
+            
+            cJSON_free(json_string);  // Free the JSON string
         }
     }    
 }
@@ -113,32 +266,35 @@ static void publish_rx_peer_data(struct RX_peer *peer)
     if (dynamic_payload_changed(peer->dynamic_payload, peer->previous_dynamic_payload) ||
         should_publish_by_time(peer->lastDynamicPublished))
     {
-        build_topic(topic, sizeof(topic), peer->id, "dynamic");
-        
-        if (publish_binary_data(topic, peer->dynamic_payload, 
-                               sizeof(mesh_dynamic_payload_t)) == ESP_OK)
-        {
-            *peer->previous_dynamic_payload = *peer->dynamic_payload;
-            peer->lastDynamicPublished = current_time;
-            //ESP_LOGI(TAG, "Published RX%d dynamic payload (V:%.2f, I:%.2f)", 
-            //         peer->id, peer->dynamic_payload->RX.voltage, 
-            //         peer->dynamic_payload->RX.current);
+        char *json_string = dynamic_payload_to_json(peer->dynamic_payload, peer->id);
+        if (json_string) {
+            build_topic(topic, sizeof(topic), peer->id, "dynamic");
+            
+            if (publish_json_data(topic, json_string) == ESP_OK) {
+                *peer->previous_dynamic_payload = *peer->dynamic_payload;
+                peer->lastDynamicPublished = current_time;
+                ESP_LOGI(TAG, "Published RX-%d dynamic: %s", peer->id, json_string);
+            }
+            
+            cJSON_free(json_string);  // Free the JSON string
         }
     }
     
-    // Publish ALERT payload (only for monitoring so not critical)
+    // Publish ALERT payload (only when alerts are active)
     if (alert_payload_check(peer->alert_payload))
     {
-        build_topic(topic, sizeof(topic), peer->id, "alerts");
-        
-        if (publish_binary_data(topic, peer->alert_payload, 
-                               sizeof(mesh_alert_payload_t)) == ESP_OK)
-        {
-            memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
-
-            if (peer->alert_payload->RX.RX_all_flags) {
-                ESP_LOGW(TAG, "Published RX-%d ALERT payload!", peer->id);
+        char *json_string = alert_payload_to_json(peer->alert_payload, peer->id);
+        if (json_string) {
+            build_topic(topic, sizeof(topic), peer->id, "alerts");
+            
+            if (publish_json_data(topic, json_string) == ESP_OK) {
+                if (peer->alert_payload->RX.RX_all_flags) {
+                    ESP_LOGW(TAG, "Published RX-%d ALERT: %s", peer->id, json_string);
+                }
+                memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
             }
+            
+            cJSON_free(json_string);  // Free the JSON string
         }
     }
 }
@@ -160,11 +316,10 @@ static void mqtt_publish_task(void *pvParameters)
                         
             if (xSemaphoreTake(TX_peers_mutex, portMAX_DELAY) == pdTRUE) {
                 SLIST_FOREACH(tx_peer, &TX_peers, next) {
-                        publish_tx_peer_data(tx_peer);
+                    publish_tx_peer_data(tx_peer);
                 }
                 xSemaphoreGive(TX_peers_mutex);
             }
-            
             
             // Iterate through all RX peers
             struct RX_peer *rx_peer;
@@ -235,8 +390,8 @@ esp_err_t mqtt_client_manager_init(void)
         .broker.address.uri = MQTT_BROKER_URI,
         .network.reconnect_timeout_ms = MQTT_RECONNECT_INTERVAL_MS,
         .network.timeout_ms = 10000,
-        .buffer.size = 2048,
-        .buffer.out_size = 2048,
+        .buffer.size = 4096,        // Increased for JSON
+        .buffer.out_size = 4096,    // Increased for JSON
     };
     
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);

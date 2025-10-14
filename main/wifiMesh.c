@@ -887,42 +887,23 @@ static void alert_task(void *pvParameters)
         // Check for alert
         if (self_alert_payload.TX.TX_all_flags || self_alert_payload.RX.RX_all_flags) 
         {   
-            // Log specific alerts
-            if (self_alert_payload.TX.TX_all_flags) {
-                if (self_alert_payload.TX.TX_internal.overvoltage)
-                    ESP_LOGE(TAG, "TX OVERVOLTAGE ALERT!");
-                if (self_alert_payload.TX.TX_internal.overcurrent)
-                    ESP_LOGE(TAG, "TX OVERCURRENT ALERT!");
-                if (self_alert_payload.TX.TX_internal.overtemperature)
-                    ESP_LOGE(TAG, "TX OVERTEMPERATURE ALERT!");
-                if (self_alert_payload.TX.TX_internal.FOD)
-                    ESP_LOGE(TAG, "TX FOD ALERT!");
-            } else if (self_alert_payload.RX.RX_all_flags)
-            {
-                if (self_alert_payload.RX.RX_internal.overvoltage)
-                    ESP_LOGE(TAG, "RX OVERVOLTAGE ALERT!");
-                if (self_alert_payload.RX.RX_internal.overcurrent)
-                    ESP_LOGE(TAG, "RX OVERCURRENT ALERT!");
-                if (self_alert_payload.RX.RX_internal.overtemperature)
-                    ESP_LOGE(TAG, "RX OVERTEMPERATURE ALERT!");
-                if (self_alert_payload.RX.RX_internal.FullyCharged)
-                    ESP_LOGI(TAG, "RX FULLY CHARGED!");
-            }
-            
             // ESP-NOW for RX -> TX parent
             if (UNIT_ROLE == RX && rxLocalized) 
             {
                 ESP_LOGW(TAG, "Sending CRITICAL alert via ESP-NOW");
                 espnow_send_message(DATA_ALERT, TX_parent_mac);
+                // Reset alert flags after sending
+                memset(&self_alert_payload, 0, sizeof(mesh_alert_payload_t));
+                vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
             } 
             else if (UNIT_ROLE == TX && !is_root_node) // Mesh-Lite for TX -> Master
             {
                 ESP_LOGW(TAG, "Sending alert via Mesh-Lite");
                 send_alert_payload();
+                // Reset alert flags after sending
+                memset(&self_alert_payload, 0, sizeof(mesh_alert_payload_t));
+                vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
             }
-            
-            // Reset alert flags after sending
-            self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
         }
 
         vTaskDelay(pdMS_TO_TICKS(1)); //minimum wait
@@ -980,6 +961,7 @@ static void wifi_mesh_lite_task(void *pvParameters)
                         send_dynamic_payload();
                         self_previous_dynamic_payload = self_dynamic_payload;
                         lastDynamic = xTaskGetTickCount();
+                        vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
                     }
                 }
                 else
@@ -999,6 +981,7 @@ static void wifi_mesh_lite_task(void *pvParameters)
                             espnow_send_message(DATA_DYNAMIC, TX_parent_mac);
                             self_previous_dynamic_payload = self_dynamic_payload;
                             lastDynamic = xTaskGetTickCount();
+                            vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
                         }
                     }
                 }
