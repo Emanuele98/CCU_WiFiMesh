@@ -296,20 +296,6 @@ void peer_delete(uint8_t *mac)
     }
     
     if (RX_p != NULL) {
-        // Defensive: Only free if not pointing to globals
-        if (RX_p->static_payload && RX_p->static_payload != &self_static_payload) {
-            free(RX_p->static_payload);
-        }
-        if (RX_p->dynamic_payload && RX_p->dynamic_payload != &self_dynamic_payload) {
-            free(RX_p->dynamic_payload);
-        }
-        if (RX_p->previous_dynamic_payload && 
-            RX_p->previous_dynamic_payload != &self_previous_dynamic_payload) {
-            free(RX_p->previous_dynamic_payload);
-        }
-        if (RX_p->alert_payload && RX_p->alert_payload != &self_alert_payload) {
-            free(RX_p->alert_payload);
-        }
         free(RX_p);
         ESP_LOGI(TAG, "Deleted RX peer "MACSTR, MAC2STR(mac));
     } else {
@@ -326,18 +312,22 @@ void delete_all_peers(void)
             TX_p = SLIST_FIRST(&TX_peers);
             SLIST_REMOVE_HEAD(&TX_peers, next);
 
-            // Don't free self peer's payloads (point to globals)
-            if (memcmp(TX_p->MACaddress, self_mac, 6) != 0) {
-                if (TX_p->static_payload)
-                    free(TX_p->static_payload);
-                if (TX_p->dynamic_payload)
-                    free(TX_p->dynamic_payload);
-                if (TX_p->previous_dynamic_payload)
-                    free(TX_p->previous_dynamic_payload);
-                if (TX_p->alert_payload)
-                    free(TX_p->alert_payload);
-                if (TX_p->tuning_params)
-                    free(TX_p->tuning_params);
+            // Defensive: Only free if not pointing to globals
+            if (TX_p->static_payload && TX_p->static_payload != &self_static_payload) {
+                free(TX_p->static_payload);
+            }
+            if (TX_p->dynamic_payload && TX_p->dynamic_payload != &self_dynamic_payload) {
+                free(TX_p->dynamic_payload);
+            }
+            if (TX_p->previous_dynamic_payload && 
+                TX_p->previous_dynamic_payload != &self_previous_dynamic_payload) {
+                free(TX_p->previous_dynamic_payload);
+            }
+            if (TX_p->alert_payload && TX_p->alert_payload != &self_alert_payload) {
+                free(TX_p->alert_payload);
+            }
+            if (TX_p->tuning_params && TX_p->tuning_params != &self_tuning_params) {
+                free(TX_p->tuning_params);
             }
             free(TX_p);
         }
@@ -349,17 +339,6 @@ void delete_all_peers(void)
         while (!SLIST_EMPTY(&RX_peers)) {
             RX_p = SLIST_FIRST(&RX_peers);
             SLIST_REMOVE_HEAD(&RX_peers, next);
-            
-            if (memcmp(RX_p->MACaddress, self_mac, 6) != 0) {
-                if (RX_p->static_payload)
-                    free(RX_p->static_payload);
-                if (RX_p->dynamic_payload)
-                    free(RX_p->dynamic_payload);
-                if (RX_p->previous_dynamic_payload)
-                    free(RX_p->previous_dynamic_payload);
-                if (RX_p->alert_payload)
-                    free(RX_p->alert_payload);
-            }
             free(RX_p);
         }
     }
@@ -507,27 +486,6 @@ struct RX_peer* RX_peer_add(uint8_t *mac)
 
     memset(p, 0, sizeof * p);
 
-    p->static_payload = malloc(sizeof(mesh_static_payload_t));
-    p->dynamic_payload = malloc(sizeof(mesh_dynamic_payload_t));
-    p->previous_dynamic_payload = malloc(sizeof(mesh_dynamic_payload_t));
-    p->alert_payload = malloc(sizeof(mesh_alert_payload_t));
-
-    if (!p->static_payload || !p->dynamic_payload || !p->previous_dynamic_payload ||
-        !p->alert_payload) {
-        ESP_LOGE(TAG, "Failed to allocate memory for payloads");
-        if (p->static_payload) free(p->static_payload);
-        if (p->dynamic_payload) free(p->dynamic_payload);
-        if (p->previous_dynamic_payload) free(p->previous_dynamic_payload);
-        if (p->alert_payload) free(p->alert_payload);
-        free(p);
-        return NULL;
-    }
-
-    memset(p->static_payload, 0, sizeof(mesh_static_payload_t));
-    memset(p->dynamic_payload, 0, sizeof(mesh_dynamic_payload_t));
-    memset(p->previous_dynamic_payload, 0, sizeof(mesh_dynamic_payload_t));
-    memset(p->alert_payload, 0, sizeof(mesh_alert_payload_t));
-
     memcpy(p->MACaddress, mac, 6);
     p->RX_status = RX_CONNECTED;
     p->position = -1;
@@ -548,11 +506,7 @@ struct RX_peer* RX_peer_add(uint8_t *mac)
 
     return p;
 
-cleanup_and_return_existing_rx:
-    free(p->static_payload);
-    free(p->dynamic_payload);
-    free(p->previous_dynamic_payload);
-    free(p->alert_payload);
+    cleanup_and_return_existing_rx:
     free(p);
     return existing;
 }
@@ -625,9 +579,8 @@ void init_payloads()
     memcpy(self_dynamic_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
     memcpy(self_alert_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
     memcpy(self_tuning_params.macAddr, self_mac, ETH_HWADDR_LEN);
+    self_static_payload.id = self_dynamic_payload.TX.id = self_previous_dynamic_payload.TX.id = self_alert_payload.TX.id = CONFIG_UNIT_ID;
 
-    //Define static payload
-    self_static_payload.id = CONFIG_UNIT_ID;
     self_static_payload.type = UNIT_ROLE;
     if (UNIT_ROLE == TX)
     {
@@ -643,5 +596,7 @@ void init_payloads()
         self_static_payload.OVERTEMPERATURE_limit = OVERTEMPERATURE_RX;
         self_static_payload.FOD = FOD_ACTIVE;
     }
+
+    self_dynamic_payload.TX.id = self_previous_dynamic_payload.TX.id = self_alert_payload.TX.id = CONFIG_UNIT_ID;
 }
 

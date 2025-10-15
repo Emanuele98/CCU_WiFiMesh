@@ -64,7 +64,8 @@ typedef struct
     struct 
     {
         uint8_t           macAddr[ETH_HWADDR_LEN];  /**< MAC Address of TX peer */
-        TX_status         tx_status;               /* TX status */
+        uint8_t           id;                       /**< TX ID */ 
+        TX_status         tx_status;                /**< TX status */
         float             voltage;                  /**< TX Voltage (4 bytes). */
         float             current;                  /**< TX Current Irect (4 bytes). */
         float             temp1;                    /**< TX Temperature (4 bytes). */
@@ -73,7 +74,8 @@ typedef struct
     struct 
     {
         uint8_t           macAddr[ETH_HWADDR_LEN];  /**< MAC Address of RX peer */
-        RX_status         rx_status;                /* RX status */
+        uint8_t           id;                       /**< RX ID */ 
+        RX_status         rx_status;                /**< RX status */
         float             voltage;                  /**< RX Voltage (4 bytes). */
         float             current;                  /**< RX Current Irect (4 bytes). */
         float             temp1;                    /**< RX Temperature (4 bytes). */
@@ -89,7 +91,8 @@ typedef struct
 {
     struct
     {
-        uint8_t            macAddr[ETH_HWADDR_LEN]; /**< MAC Address of TX peer */          
+        uint8_t            macAddr[ETH_HWADDR_LEN]; /**< MAC Address of TX peer */  
+        uint8_t            id;                      /**< TX ID */         
         union {
             struct {
                 uint8_t       overtemperature:1;    /* TX Overtemperature alert */
@@ -103,6 +106,7 @@ typedef struct
     struct
     {
         uint8_t            macAddr[ETH_HWADDR_LEN]; /**< MAC Address of TX peer */          
+        uint8_t           id;                       /**< RX ID */ 
         union {
             struct {
                 uint8_t       overtemperature:1;    /* RX Overtemperature alert */
@@ -148,7 +152,7 @@ typedef struct
     uint8_t           tuning;
     uint8_t           low_vds_threshold;
     uint8_t           low_vds;
-} mesh_tuning_params_t;
+} mesh_tuning_params_t; //todo later
 
 /**
  * @brief TX peer structure. This contains elements necessary for TX peer management.
@@ -202,14 +206,6 @@ struct RX_peer
 
     /* STATUS OF THE SCOOTER */
     RX_status RX_status;
-
-    /** Peripheral payloads. */
-    mesh_static_payload_t *static_payload;
-    mesh_dynamic_payload_t *dynamic_payload, *previous_dynamic_payload; // previous is used for comparison on MQTT level
-    mesh_alert_payload_t  *alert_payload;
-
-    /* Time variable */
-    uint32_t lastDynamicPublished;
 };
 
 SLIST_HEAD(RX_peer_list, RX_peer);

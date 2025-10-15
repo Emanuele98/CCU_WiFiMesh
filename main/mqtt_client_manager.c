@@ -53,6 +53,7 @@ static char* dynamic_payload_to_json(const mesh_dynamic_payload_t *payload, uint
         mac_to_string(payload->TX.macAddr, mac_str, sizeof(mac_str));
         
         cJSON_AddStringToObject(tx_obj, "mac", mac_str);
+        cJSON_AddNumberToObject(tx_obj, "id", payload->TX.id);
         cJSON_AddNumberToObject(tx_obj, "status", payload->TX.tx_status);
         cJSON_AddNumberToObject(tx_obj, "voltage", payload->TX.voltage);
         cJSON_AddNumberToObject(tx_obj, "current", payload->TX.current);
@@ -69,6 +70,7 @@ static char* dynamic_payload_to_json(const mesh_dynamic_payload_t *payload, uint
         mac_to_string(payload->RX.macAddr, mac_str, sizeof(mac_str));
         
         cJSON_AddStringToObject(rx_obj, "mac", mac_str);
+        cJSON_AddNumberToObject(rx_obj, "id", payload->RX.id);
         cJSON_AddNumberToObject(rx_obj, "status", payload->RX.rx_status);
         cJSON_AddNumberToObject(rx_obj, "voltage", payload->RX.voltage);
         cJSON_AddNumberToObject(rx_obj, "current", payload->RX.current);
@@ -120,6 +122,7 @@ static char* alert_payload_to_json(const mesh_alert_payload_t *payload, uint8_t 
         mac_to_string(payload->TX.macAddr, mac_str, sizeof(mac_str));
         
         cJSON_AddStringToObject(tx_obj, "mac", mac_str);
+        cJSON_AddNumberToObject(tx_obj, "id", payload->TX.id);
         cJSON_AddBoolToObject(tx_obj, "overtemperature", payload->TX.TX_internal.overtemperature);
         cJSON_AddBoolToObject(tx_obj, "overcurrent", payload->TX.TX_internal.overcurrent);
         cJSON_AddBoolToObject(tx_obj, "overvoltage", payload->TX.TX_internal.overvoltage);
@@ -135,6 +138,7 @@ static char* alert_payload_to_json(const mesh_alert_payload_t *payload, uint8_t 
         mac_to_string(payload->RX.macAddr, mac_str, sizeof(mac_str));
         
         cJSON_AddStringToObject(rx_obj, "mac", mac_str);
+        cJSON_AddNumberToObject(rx_obj, "id", payload->RX.id);
         cJSON_AddBoolToObject(rx_obj, "overtemperature", payload->RX.RX_internal.overtemperature);
         cJSON_AddBoolToObject(rx_obj, "overcurrent", payload->RX.RX_internal.overcurrent);
         cJSON_AddBoolToObject(rx_obj, "overvoltage", payload->RX.RX_internal.overvoltage);
@@ -203,7 +207,7 @@ static esp_err_t publish_json_data(const char *topic, const char *json_string)
         return ESP_FAIL;
     }
     
-    ESP_LOGD(TAG, "Published to %s (msg_id=%d)", topic, msg_id);
+    //ESP_LOGD(TAG, "Published to %s (msg_id=%d)", topic, msg_id);
     return ESP_OK;
 }
 
@@ -211,7 +215,7 @@ static esp_err_t publish_json_data(const char *topic, const char *json_string)
  *                TX Peer Publishing
  *******************************************************/
 
-static void publish_tx_peer_data(struct TX_peer *peer)
+static void publish_peer_data(struct TX_peer *peer)
 {
     char topic[128];
     uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
@@ -224,7 +228,8 @@ static void publish_tx_peer_data(struct TX_peer *peer)
         if (json_string) {
             build_topic(topic, sizeof(topic), peer->id, "dynamic");
             
-            if (publish_json_data(topic, json_string) == ESP_OK) {
+            if (publish_json_data(topic, json_string) == ESP_OK) 
+            {
                 *peer->previous_dynamic_payload = *peer->dynamic_payload;
                 peer->lastDynamicPublished = current_time;
                 ESP_LOGI(TAG, "Published TX-%d dynamic: %s", peer->id, json_string);
@@ -241,62 +246,15 @@ static void publish_tx_peer_data(struct TX_peer *peer)
         if (json_string) {
             build_topic(topic, sizeof(topic), peer->id, "alerts");
             
-            if (publish_json_data(topic, json_string) == ESP_OK) {
-                if (peer->alert_payload->TX.TX_all_flags || peer->alert_payload->RX.RX_all_flags) {
-                    ESP_LOGW(TAG, "Published TX-%d ALERT: %s", peer->id, json_string);
-                }
-                memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
+            if (publish_json_data(topic, json_string) == ESP_OK) 
+            {
+                ESP_LOGW(TAG, "Published TX-%d ALERT: %s", peer->id, json_string);
+                self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
             }
             
             cJSON_free(json_string);  // Free the JSON string
         }
     }    
-}
-
-/*******************************************************
- *                RX Peer Publishing
- *******************************************************/
-
-static void publish_rx_peer_data(struct RX_peer *peer)
-{
-    char topic[128];
-    uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    
-    // Publish DYNAMIC payload
-    if (dynamic_payload_changed(peer->dynamic_payload, peer->previous_dynamic_payload) ||
-        should_publish_by_time(peer->lastDynamicPublished))
-    {
-        char *json_string = dynamic_payload_to_json(peer->dynamic_payload, peer->id);
-        if (json_string) {
-            build_topic(topic, sizeof(topic), peer->id, "dynamic");
-            
-            if (publish_json_data(topic, json_string) == ESP_OK) {
-                *peer->previous_dynamic_payload = *peer->dynamic_payload;
-                peer->lastDynamicPublished = current_time;
-                ESP_LOGI(TAG, "Published RX-%d dynamic: %s", peer->id, json_string);
-            }
-            
-            cJSON_free(json_string);  // Free the JSON string
-        }
-    }
-    
-    // Publish ALERT payload (only when alerts are active)
-    if (alert_payload_check(peer->alert_payload))
-    {
-        char *json_string = alert_payload_to_json(peer->alert_payload, peer->id);
-        if (json_string) {
-            build_topic(topic, sizeof(topic), peer->id, "alerts");
-            
-            if (publish_json_data(topic, json_string) == ESP_OK) {
-                if (peer->alert_payload->RX.RX_all_flags) {
-                    ESP_LOGW(TAG, "Published RX-%d ALERT: %s", peer->id, json_string);
-                }
-                memset(peer->alert_payload, 0, sizeof(mesh_alert_payload_t));
-            }
-            
-            cJSON_free(json_string);  // Free the JSON string
-        }
-    }
 }
 
 /*******************************************************
@@ -313,22 +271,11 @@ static void mqtt_publish_task(void *pvParameters)
         {
             // Iterate through all TX peers
             struct TX_peer *tx_peer;
-                        
-            if (xSemaphoreTake(TX_peers_mutex, portMAX_DELAY) == pdTRUE) {
-                SLIST_FOREACH(tx_peer, &TX_peers, next) {
-                    publish_tx_peer_data(tx_peer);
-                }
-                xSemaphoreGive(TX_peers_mutex);
-            }
-            
-            // Iterate through all RX peers
-            struct RX_peer *rx_peer;
 
-            if (xSemaphoreTake(RX_peers_mutex, portMAX_DELAY) == pdTRUE) {
-                SLIST_FOREACH(rx_peer, &RX_peers, next) {
-                    publish_rx_peer_data(rx_peer);
+            WITH_TX_PEERS_LOCKED {
+                SLIST_FOREACH(tx_peer, &TX_peers, next) {
+                    publish_peer_data(tx_peer);
                 }
-                xSemaphoreGive(RX_peers_mutex);
             }
         }
         

@@ -65,25 +65,4 @@ void app_main(void)
 
     /* Initialize Hardware*/
     init_HW();
-
-    //local mesh formation done!
-    //master on any node (peer s-link structure) - make 2 lists
-    //static payload done
-
-    //TX and RX join the mesh first - one TX elected as master
-    //static payload from both - connect mac address to peer  (static msg initiated by the peer upon joining the mesh)
-    //after that localization (one RX without position - dynamic payload only if it changes or every minute)
-    //RX starts sending espnow broadcast data (TX receives it and if it is switched on replies with espnow unicast and binds the peer)
-    //TX inform master <-> master inform TX (double check)
-    //sensor monitoring 
-
-    // handle localization process 
-        //1. sequential switching of TX (with delay) 
-        //2. rx broadcast esp-now to signal rx voltage (LOC table shared)
-
-        //? need RX struct al all? everything is grouped inside TX. No master-RX communication.
-
-    //todo later: mqtt + aws management
-
-    //todo later: visualization on web app
 }

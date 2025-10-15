@@ -49,11 +49,11 @@ static esp_err_t static_to_root_raw_msg_response_process(uint8_t *data, uint32_t
     }
 
     mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
-    ESP_LOGW(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
-             received_payload->OVERVOLTAGE_limit,
-             received_payload->OVERCURRENT_limit,
-             received_payload->OVERTEMPERATURE_limit,
-             received_payload->FOD ? "true" : "false");
+    //ESP_LOGW(TAG, "OVERVOLTAGE_limit: %.2f, OVERCURRENT_limit: %.2f, OVERTEMPERATURE_limit: %.2f, FOD: %s",
+    //         received_payload->OVERVOLTAGE_limit,
+    //         received_payload->OVERCURRENT_limit,
+    //         received_payload->OVERTEMPERATURE_limit,
+    //         received_payload->FOD ? "true" : "false");
 
     //* Set Local Alerts
     OVER_CURRENT = received_payload->OVERCURRENT_limit;
@@ -84,7 +84,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
-    ESP_LOGW(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
+    ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
              received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
 
     // Set response to set limits (from master to child)
@@ -119,6 +119,7 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
             *p->static_payload = *received_payload;
             p->id = received_payload->id;
             p->position = p->id; // Position same as ID for TX
+            p->tx_status = TX_OFF;
             ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload->id);
         }
     }
@@ -127,10 +128,10 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         struct RX_peer *p = RX_peer_add(received_payload->macAddr); 
         if (p != NULL)
         {
-            *p->static_payload = *received_payload;
             p->id = received_payload->id;
             p->position = -1; // Position unknown (variable) for RX
-            ESP_LOGI(TAG, "RX Peer structure added! ID: %d", p->static_payload->id);
+            p->RX_status = RX_CONNECTED;
+            ESP_LOGI(TAG, "RX Peer structure added! ID: %d", p->id);
         }
     }
 
@@ -152,7 +153,7 @@ static esp_err_t dynamic_to_root_raw_msg_process(uint8_t *data, uint32_t len,
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    ESP_LOGW( TAG, "Process dynamic message");   
+    //ESP_LOGW( TAG, "Process dynamic message");   
 
     // Process the received data
     if (len != sizeof(mesh_dynamic_payload_t)) {
@@ -167,19 +168,19 @@ static esp_err_t dynamic_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_dynamic_payload_t *received_payload = (mesh_dynamic_payload_t *)data;
-    ESP_LOGI(TAG, "Received dynamic payload from MAC: "MACSTR,  MAC2STR(received_payload->TX.macAddr));
+    //ESP_LOGI(TAG, "Received dynamic payload from MAC: "MACSTR,  MAC2STR(received_payload->TX.macAddr));
 
-    //todo handle dynamic payload (add also stuff from relative receiver )
     struct TX_peer *p = TX_peer_find_by_mac(received_payload->TX.macAddr);
     if (p != NULL)
     {
         *p->dynamic_payload = *received_payload;
         ESP_LOGI(TAG, "TX Peer ID %d dynamic payload updated", p->id);
         // show data
-        ESP_LOGI(TAG, "TX: Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C \n\
+        
+        /*ESP_LOGI(TAG, "TX: Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C \n\
                         RX: Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C",
                  p->dynamic_payload->TX.voltage, p->dynamic_payload->TX.current, p->dynamic_payload->TX.temp1, p->dynamic_payload->TX.temp2,
-                p->dynamic_payload->RX.voltage, p->dynamic_payload->RX.current, p->dynamic_payload->RX.temp1, p->dynamic_payload->RX.temp2);
+                p->dynamic_payload->RX.voltage, p->dynamic_payload->RX.current, p->dynamic_payload->RX.temp1, p->dynamic_payload->RX.temp2);*/
     }
 
     return ESP_OK;
@@ -201,7 +202,7 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    ESP_LOGW( TAG, "Process alert message");   
+    //ESP_LOGW( TAG, "Process alert message");   
 
     // Process the received data
     if (len != sizeof(mesh_alert_payload_t)) {
@@ -218,16 +219,16 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     mesh_alert_payload_t *received_payload = (mesh_alert_payload_t *)data;
     ESP_LOGI(TAG, "Received alert payload from MAC: "MACSTR,  MAC2STR(received_payload->TX.macAddr));
 
-    //todo handle alert payload
+    //todo handle alert payload (swith off command and reconnect)
     struct TX_peer *p = TX_peer_find_by_mac(received_payload->TX.macAddr);
     if (p != NULL)
     {
         *p->alert_payload = *received_payload;
-        ESP_LOGI(TAG, "TX Peer ID %d alert payload updated", p->id);
+        ESP_LOGI(TAG, "TX Peer ID %d alert payload received - tx %d rx %d", p->id, p->alert_payload->TX.TX_all_flags, p->alert_payload->RX.RX_all_flags);
         // show data
-        ESP_LOGI(TAG, "TX: OV %d, OC %d, OT %d, FOD %d \n RX: OV: %d, OC %d, OT %d FC %d",
-            p->alert_payload->TX.TX_internal.overvoltage, p->alert_payload->TX.TX_internal.overcurrent, p->alert_payload->TX.TX_internal.overtemperature, p->alert_payload->TX.TX_internal.FOD,
-            p->alert_payload->RX.RX_internal.overvoltage, p->alert_payload->RX.RX_internal.overcurrent, p->alert_payload->RX.RX_internal.overtemperature, p->alert_payload->RX.RX_internal.FullyCharged);
+        //ESP_LOGI(TAG, "TX: OV %d, OC %d, OT %d, FOD %d \n RX: OV: %d, OC %d, OT %d FC %d",
+        //    p->alert_payload->TX.TX_internal.overvoltage, p->alert_payload->TX.TX_internal.overcurrent, p->alert_payload->TX.TX_internal.overtemperature, p->alert_payload->TX.TX_internal.FOD,
+        //    p->alert_payload->RX.RX_internal.overvoltage, p->alert_payload->RX.RX_internal.overcurrent, p->alert_payload->RX.RX_internal.overtemperature, p->alert_payload->RX.RX_internal.FullyCharged);
     }
 
     return ESP_OK;
@@ -328,6 +329,7 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
     if (p != NULL)
     {
         p->position = received_payload->position;
+        p->RX_status = RX_CHARGING;
         ESP_LOGI(TAG, "RX Peer ID %d localized at position %d", p->id, p->position);
     }
 
@@ -474,10 +476,20 @@ static void send_static_payload(void)
 static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
 {
     //populate mesh lite dynamic payload
+    memcpy(self_dynamic_payload.RX.macAddr, mac, ETH_HWADDR_LEN);
     self_dynamic_payload.RX.voltage = data->field_1;
     self_dynamic_payload.RX.current = data->field_2;
     self_dynamic_payload.RX.temp1 = data->field_3;
     self_dynamic_payload.RX.temp2 = data->field_4;
+
+    self_dynamic_payload.RX.rx_status = RX_CHARGING;
+
+    //Peer ID
+    struct RX_peer* p = RX_peer_find_by_mac(mac);
+    if (p != NULL)
+        self_dynamic_payload.RX.id = p->id;
+    else
+        ESP_LOGE(TAG, "RX peer not found in the list upon dynamic espNOW msg");
 }
 
 static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
@@ -486,10 +498,20 @@ static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
     write_STM_command(SWITCH_OFF);
 
     //populate mesh lite alert payload 
+    memcpy(self_alert_payload.RX.macAddr, mac, ETH_HWADDR_LEN);
     self_alert_payload.RX.RX_internal.overvoltage = data->field_1;
     self_alert_payload.RX.RX_internal.overcurrent = data->field_2;
     self_alert_payload.RX.RX_internal.overtemperature = data->field_3;
     self_alert_payload.RX.RX_internal.FullyCharged = data->field_4;
+
+    self_dynamic_payload.RX.rx_status = RX_ALERT;
+
+    //Peer ID
+    struct RX_peer* p = RX_peer_find_by_mac(mac);
+    if (p != NULL)
+        self_alert_payload.RX.id = p->id;
+    else
+        ESP_LOGE(TAG, "RX peer not found in the list upon alert espNOW msg");
 
     //reconnection timeout
 }
@@ -769,6 +791,7 @@ static void espnow_task(void *pvParameter)
                                     if (p != NULL)
                                     {
                                         p->position = CONFIG_UNIT_ID; //position same as ID for RX
+                                        p->RX_status = RX_CHARGING;
                                         ESP_LOGI(TAG, "RX peer position updated to %d", p->position);
                                     }
                                 }
@@ -885,24 +908,24 @@ static void alert_task(void *pvParameters)
     while (1) 
     {
         // Check for alert
-        if (self_alert_payload.TX.TX_all_flags || self_alert_payload.RX.RX_all_flags) 
+        if (alert_payload_check(&self_alert_payload)) 
         {   
             // ESP-NOW for RX -> TX parent
             if (UNIT_ROLE == RX && rxLocalized) 
             {
                 ESP_LOGW(TAG, "Sending CRITICAL alert via ESP-NOW");
                 espnow_send_message(DATA_ALERT, TX_parent_mac);
+                vTaskDelay(pdMS_TO_TICKS(5000)); //min interval to avoid flooding
                 // Reset alert flags after sending
-                memset(&self_alert_payload, 0, sizeof(mesh_alert_payload_t));
-                vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
+                self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
             } 
             else if (UNIT_ROLE == TX && !is_root_node) // Mesh-Lite for TX -> Master
             {
                 ESP_LOGW(TAG, "Sending alert via Mesh-Lite");
                 send_alert_payload();
+                vTaskDelay(pdMS_TO_TICKS(5000)); //min interval to avoid flooding
                 // Reset alert flags after sending
-                memset(&self_alert_payload, 0, sizeof(mesh_alert_payload_t));
-                vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
+                self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
             }
         }
 
