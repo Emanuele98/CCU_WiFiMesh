@@ -10,6 +10,14 @@ static bool mqtt_connected = false;
 /* Task handle */
 static TaskHandle_t mqtt_publish_task_handle = NULL;
 
+/* Topics */
+static const char *baseTopic = "bumblebee";
+static const char *dynamicTopic = "dynamic";
+static const char *alertTopic = "alerts";
+static const char *controlTopic = "bumblebee/control";
+
+
+
 /*******************************************************
  *                JSON Helper Functions
  *******************************************************/
@@ -170,7 +178,7 @@ static void build_topic(char *topic_buf, size_t buf_len,
                        uint8_t node_id, const char *data_type)
 {
     snprintf(topic_buf, buf_len, "%s/%d/%s", 
-             MQTT_TOPIC_BASE, node_id, data_type);
+             baseTopic, node_id, data_type);
 }
 
 /**
@@ -226,7 +234,7 @@ static void publish_peer_data(struct TX_peer *peer)
     {
         char *json_string = dynamic_payload_to_json(peer->dynamic_payload, peer->id);
         if (json_string) {
-            build_topic(topic, sizeof(topic), peer->id, "dynamic");
+            build_topic(topic, sizeof(topic), peer->id, dynamicTopic);
             
             if (publish_json_data(topic, json_string) == ESP_OK) 
             {
@@ -240,16 +248,16 @@ static void publish_peer_data(struct TX_peer *peer)
     }
     
     // Publish ALERT payload (only when alerts are active)
-    if (alert_payload_check(peer->alert_payload))
+    if (alert_payload_changed(peer->alert_payload, peer->previous_alert_payload))
     {
         char *json_string = alert_payload_to_json(peer->alert_payload, peer->id);
         if (json_string) {
-            build_topic(topic, sizeof(topic), peer->id, "alerts");
+            build_topic(topic, sizeof(topic), peer->id, alertTopic);
             
             if (publish_json_data(topic, json_string) == ESP_OK) 
             {
+                *peer->previous_alert_payload = *peer->alert_payload;
                 ESP_LOGW(TAG, "Published TX-%d ALERT: %s", peer->id, json_string);
-                self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
             }
             
             cJSON_free(json_string);  // Free the JSON string
@@ -300,11 +308,17 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
             mqtt_connected = true;
+            esp_mqtt_client_subscribe(mqtt_client, controlTopic, 1); // subscribe to control
+            publish_json_data(controlTopic, "0"); // reset control button
             break;
             
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGW(TAG, "MQTT_EVENT_DISCONNECTED");
             mqtt_connected = false;
+            break;
+
+        case MQTT_EVENT_SUBSCRIBED:
+            ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
             break;
             
         case MQTT_EVENT_PUBLISHED:
@@ -317,9 +331,30 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                 ESP_LOGE(TAG, "Last errno: %d", event->error_handle->esp_transport_sock_errno);
             }
             break;
+
+        case MQTT_EVENT_DATA:
+            //ESP_LOGI(TAG, "MQTT_EVENT_DATA received");
+            //ESP_LOGI(TAG, "TOPIC=%.*s", event->topic_len, event->topic);
+            //ESP_LOGI(TAG, "DATA=%.*s", event->data_len, event->data);
+
+            if (strncmp(event->topic, controlTopic, event->topic_len) == 0)
+            {
+                if (strncmp(event->data, "1", event->data_len) == 0) {
+                    ESP_LOGW(TAG, "Switch system ON - Dashboard command!");
+                    write_STM_command(SWITCH_LOC);
+                    //todo: also send ON to all connected pads? localization messed up!
+                } 
+                else if (strncmp(event->data, "0", event->data_len) == 0)
+                {
+                    ESP_LOGW(TAG, "Switch system OFF - Dashboard command!");
+                    write_STM_command(SWITCH_OFF);
+                    //todo: also send OFF to all connected pads
+                }
+            }
+            break;
             
         default:
-            ESP_LOGD(TAG, "MQTT event: %d", event_id);
+            ESP_LOGW(TAG, "MQTT event: %d", event_id);
             break;
     }
 }

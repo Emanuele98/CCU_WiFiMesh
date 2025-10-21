@@ -6,10 +6,7 @@
 #include "mqtt_client.h"
 
 /* MQTT broker URI */
-#define MQTT_BROKER_URI "mqtt://192.168.1.92:1883"
-
-/* MQTT Topics base */
-#define MQTT_TOPIC_BASE "bumblebee"
+#define MQTT_BROKER_URI "mqtt://15.188.29.195:1883"
 
 /* Publishing intervals */
 #define MQTT_MIN_PUBLISH_INTERVAL_MS 30000                      // 30s

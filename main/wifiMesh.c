@@ -908,24 +908,20 @@ static void alert_task(void *pvParameters)
     while (1) 
     {
         // Check for alert
-        if (alert_payload_check(&self_alert_payload)) 
+        if (alert_payload_changed(&self_alert_payload, &self_previous_alert_payload))
         {   
             // ESP-NOW for RX -> TX parent
             if (UNIT_ROLE == RX && rxLocalized) 
             {
                 ESP_LOGW(TAG, "Sending CRITICAL alert via ESP-NOW");
                 espnow_send_message(DATA_ALERT, TX_parent_mac);
-                vTaskDelay(pdMS_TO_TICKS(5000)); //min interval to avoid flooding
-                // Reset alert flags after sending
-                self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
+                self_previous_alert_payload = self_alert_payload;
             } 
             else if (UNIT_ROLE == TX && !is_root_node) // Mesh-Lite for TX -> Master
             {
                 ESP_LOGW(TAG, "Sending alert via Mesh-Lite");
                 send_alert_payload();
-                vTaskDelay(pdMS_TO_TICKS(5000)); //min interval to avoid flooding
-                // Reset alert flags after sending
-                self_alert_payload.TX.TX_all_flags = self_alert_payload.RX.RX_all_flags = 0;
+                self_previous_alert_payload = self_alert_payload;
             }
         }
 
@@ -1138,8 +1134,8 @@ static void wifi_init(void)
     // Station config (yes router connection)
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = CONFIG_MESH_ROUTER_SSID,
-            .password = CONFIG_MESH_ROUTER_PASSWD,
+            .ssid = "manu",//CONFIG_MESH_ROUTER_SSID,
+            .password = "cherrycookies",//CONFIG_MESH_ROUTER_PASSWD,
         },
     };
     

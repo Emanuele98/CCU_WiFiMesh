@@ -165,15 +165,21 @@ static void get_adc(void *pvParameters)
         }
 
         //Alerts check
-        if (self_dynamic_payload.RX.voltage > OVER_VOLTAGE) {
+        if (self_dynamic_payload.RX.voltage > OVER_VOLTAGE) 
             self_alert_payload.RX.RX_internal.overvoltage = 1;
-        }
-        if (self_dynamic_payload.RX.current > OVER_CURRENT) {
+        else
+            self_alert_payload.RX.RX_internal.overvoltage = 0;
+
+        if (self_dynamic_payload.RX.current > OVER_CURRENT)
             self_alert_payload.RX.RX_internal.overcurrent = 1;
-        }
-        if (self_dynamic_payload.RX.temp1 > OVER_TEMPERATURE || self_dynamic_payload.RX.temp2 > OVER_TEMPERATURE) {
+        else
+            self_alert_payload.RX.RX_internal.overcurrent = 0;
+
+        if (self_dynamic_payload.RX.temp1 > OVER_TEMPERATURE || self_dynamic_payload.RX.temp2 > OVER_TEMPERATURE)
             self_alert_payload.RX.RX_internal.overtemperature = 1;
-        }
+        else
+            self_alert_payload.RX.RX_internal.overtemperature = 0;
+        
         //todo fully charged check
         
         // Sample at ~1kHz (1ms delay) for equivalent to 5kHz/2 channels in continuous mode

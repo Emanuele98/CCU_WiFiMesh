@@ -12,6 +12,7 @@ mesh_static_payload_t self_static_payload = {0};
 mesh_dynamic_payload_t self_dynamic_payload = {0};
 mesh_dynamic_payload_t self_previous_dynamic_payload = {0};
 mesh_alert_payload_t self_alert_payload = {0};
+mesh_alert_payload_t self_previous_alert_payload = {0};
 mesh_tuning_params_t self_tuning_params = {0};
 
 peer_type UNIT_ROLE;
@@ -85,6 +86,8 @@ void peer_init()
             free(p->previous_dynamic_payload);
         if (p->alert_payload)
             free(p->alert_payload);
+        if (p->previous_alert_payload)
+            free(p->previous_alert_payload);
         if (p->tuning_params)
             free(p->tuning_params);
 
@@ -92,6 +95,7 @@ void peer_init()
         p->dynamic_payload = &self_dynamic_payload;
         p->previous_dynamic_payload = &self_previous_dynamic_payload;
         p->alert_payload = &self_alert_payload;
+        p->previous_alert_payload = &self_previous_alert_payload;
         p->tuning_params = &self_tuning_params;
     }
 }
@@ -273,6 +277,10 @@ void peer_delete(uint8_t *mac)
         if (TX_p->alert_payload && TX_p->alert_payload != &self_alert_payload) {
             free(TX_p->alert_payload);
         }
+        if (TX_p->previous_alert_payload && 
+            TX_p->previous_alert_payload != &self_previous_alert_payload) {
+            free(TX_p->previous_alert_payload);
+        }
         if (TX_p->tuning_params && TX_p->tuning_params != &self_tuning_params) {
             free(TX_p->tuning_params);
         }
@@ -325,6 +333,10 @@ void delete_all_peers(void)
             }
             if (TX_p->alert_payload && TX_p->alert_payload != &self_alert_payload) {
                 free(TX_p->alert_payload);
+            }
+            if (TX_p->previous_alert_payload && 
+                TX_p->previous_alert_payload != &self_previous_alert_payload) {
+                free(TX_p->previous_alert_payload);
             }
             if (TX_p->tuning_params && TX_p->tuning_params != &self_tuning_params) {
                 free(TX_p->tuning_params);
@@ -408,16 +420,18 @@ struct TX_peer* TX_peer_add(uint8_t *mac)
     p->dynamic_payload = malloc(sizeof(mesh_dynamic_payload_t));
     p->previous_dynamic_payload = malloc(sizeof(mesh_dynamic_payload_t));
     p->alert_payload = malloc(sizeof(mesh_alert_payload_t));
+    p->previous_alert_payload = malloc(sizeof(mesh_alert_payload_t));
     p->tuning_params = malloc(sizeof(mesh_tuning_params_t));
 
     if (!p->static_payload || !p->dynamic_payload || !p->previous_dynamic_payload ||
-        !p->alert_payload || !p->tuning_params) {
+        !p->alert_payload || !p->previous_alert_payload || !p->tuning_params) {
         ESP_LOGE(TAG, "Failed to allocate memory for payloads");
         // Clean up
         if (p->static_payload) free(p->static_payload);
         if (p->dynamic_payload) free(p->dynamic_payload);
         if (p->previous_dynamic_payload) free(p->previous_dynamic_payload);
         if (p->alert_payload) free(p->alert_payload);
+        if (p->previous_alert_payload) free(p->previous_alert_payload);
         if (p->tuning_params) free(p->tuning_params);
         free(p);
         return NULL;
@@ -427,6 +441,7 @@ struct TX_peer* TX_peer_add(uint8_t *mac)
     memset(p->dynamic_payload, 0, sizeof(mesh_dynamic_payload_t));
     memset(p->previous_dynamic_payload, 0, sizeof(mesh_dynamic_payload_t));
     memset(p->alert_payload, 0, sizeof(mesh_alert_payload_t));
+    memset(p->previous_alert_payload, 0, sizeof(mesh_alert_payload_t));
     memset(p->tuning_params, 0, sizeof(mesh_tuning_params_t));
 
     // Initialize peer parameters
@@ -459,6 +474,7 @@ cleanup_and_return_existing:
     free(p->dynamic_payload);
     free(p->previous_dynamic_payload);
     free(p->alert_payload);
+    free(p->previous_alert_payload);
     free(p->tuning_params);
     free(p);
     return existing;  // Return the one that won the race
@@ -560,9 +576,22 @@ bool dynamic_payload_changed(mesh_dynamic_payload_t *current,
     return res;
 }
 
-bool alert_payload_check(mesh_alert_payload_t *current)
+bool alert_payload_changed(mesh_alert_payload_t *current, 
+                            mesh_alert_payload_t *previous)
 {
-    bool res = (current->TX.TX_all_flags || current->RX.RX_all_flags);
+    bool res = false;
+
+    if ((current->TX.TX_internal.overvoltage != previous->TX.TX_internal.overcurrent)
+        || (current->TX.TX_internal.overcurrent != previous->TX.TX_internal.overcurrent)
+        || (current->TX.TX_internal.overtemperature != previous->TX.TX_internal.overtemperature)
+        || (current->TX.TX_internal.FOD != previous->TX.TX_internal.FOD)
+        || (current->RX.RX_internal.overvoltage != previous->RX.RX_internal.overvoltage)
+        || (current->RX.RX_internal.overcurrent != previous->RX.RX_internal.overcurrent)
+        || (current->RX.RX_internal.overtemperature != previous->RX.RX_internal.overtemperature)
+        || (current->RX.RX_internal.FullyCharged != previous->RX.RX_internal.FullyCharged))
+    {
+        res = true;
+    }
 
     return res;
 }
@@ -579,7 +608,7 @@ void init_payloads()
     memcpy(self_dynamic_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
     memcpy(self_alert_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
     memcpy(self_tuning_params.macAddr, self_mac, ETH_HWADDR_LEN);
-    self_static_payload.id = self_dynamic_payload.TX.id = self_previous_dynamic_payload.TX.id = self_alert_payload.TX.id = CONFIG_UNIT_ID;
+    self_static_payload.id = self_dynamic_payload.TX.id = self_previous_dynamic_payload.TX.id = self_alert_payload.TX.id = self_previous_alert_payload.TX.id = CONFIG_UNIT_ID;
 
     self_static_payload.type = UNIT_ROLE;
     if (UNIT_ROLE == TX)
@@ -596,7 +625,5 @@ void init_payloads()
         self_static_payload.OVERTEMPERATURE_limit = OVERTEMPERATURE_RX;
         self_static_payload.FOD = FOD_ACTIVE;
     }
-
-    self_dynamic_payload.TX.id = self_previous_dynamic_payload.TX.id = self_alert_payload.TX.id = CONFIG_UNIT_ID;
 }
 

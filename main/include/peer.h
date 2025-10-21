@@ -179,8 +179,8 @@ struct TX_peer
 
     /** Peripheral payloads. */
     mesh_static_payload_t *static_payload;
-    mesh_dynamic_payload_t *dynamic_payload, *previous_dynamic_payload; // previous is used for comparison on MQTT level
-    mesh_alert_payload_t  *alert_payload;
+    mesh_dynamic_payload_t *dynamic_payload, *previous_dynamic_payload; // previous is used for comparison for sending logic
+    mesh_alert_payload_t  *alert_payload, *previous_alert_payload; // previous is used for comparison for sending logic
     mesh_tuning_params_t *tuning_params;
 
     /* Time variable */
@@ -250,6 +250,7 @@ extern mesh_static_payload_t self_static_payload;
 extern mesh_dynamic_payload_t self_dynamic_payload;
 extern mesh_dynamic_payload_t self_previous_dynamic_payload;
 extern mesh_alert_payload_t self_alert_payload;
+extern mesh_alert_payload_t self_previous_alert_payload;
 extern mesh_tuning_params_t self_tuning_params;
 
 
@@ -360,10 +361,10 @@ bool dynamic_payload_changed(mesh_dynamic_payload_t *current,
                                     mesh_dynamic_payload_t *previous);
 
 /**
- * @brief Detect alerts 
- * 
+ * @brief Detect alert payload changes 
  */
-bool alert_payload_check(mesh_alert_payload_t *current);
+bool alert_payload_changed(mesh_alert_payload_t *current, 
+                            mesh_alert_payload_t *previous);
 
 /**
  * @brief Init payloads self-structures
