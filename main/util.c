@@ -16,6 +16,9 @@ EventGroupHandle_t eventGroupHandle;
 
 uint8_t self_mac[ETH_HWADDR_LEN] = {0};
 
+// Localization variable
+int8_t previousTX_pos = 0;
+
 //* Global Alerts variables
 float OVER_CURRENT;
 float OVER_TEMPERATURE;

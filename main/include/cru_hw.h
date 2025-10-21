@@ -1,8 +1,8 @@
 #ifndef __CRU_HW_H__
 #define __CRU_HW_H__
 
-#include <util.h>
-#include <peer.h>
+#include "util.h"
+#include "peer.h"
 
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"

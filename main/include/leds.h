@@ -1,9 +1,9 @@
 #ifndef _LEDS_H_
 #define _LEDS_H_
 
-#include <util.h>
-#include "led_strip.h"  // New built-in component
+#include "led_strip.h" 
 #include "aux_ctu_hw.h"
+#include "util.h"
 
 /* virtual switch for default led mode */
 extern bool strip_enable;

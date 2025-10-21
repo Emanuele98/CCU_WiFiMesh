@@ -26,6 +26,7 @@
     "cstdint": "c",
     "stdint.h": "c",
     "gpio.h": "c",
-    "aux_ctu_hw.h": "c"
+    "aux_ctu_hw.h": "c",
+    "peer.h": "c"
   }
 }

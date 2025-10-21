@@ -1,13 +1,10 @@
-#include "driver/gpio.h"
-#include "include/aux_ctu_hw.h"
+#include "aux_ctu_hw.h"
 
 static QueueHandle_t uart0_queue;
 
 TimerHandle_t connected_leds_timer, misaligned_leds_timer, charging_leds_timer, hw_readings_timer;
 
 static float last_duty_cycle = 0.30;
-
-stm32_command_t selfPowerStatus = SWITCH_OFF;
 
 static const char* TAG = "HARDWARE";
 
@@ -50,8 +47,8 @@ static void parse_received_UART(uint8_t *rx_uart)
 
     if (self_alert_payload.TX.TX_all_flags) {
         //ESP_LOGE(TAG, "ALERT: %d", alertType);
-        if (selfPowerStatus != SWITCH_OFF)
-            write_STM_command(SWITCH_OFF);
+        if (self_dynamic_payload.TX.tx_status != TX_OFF)
+            write_STM_command(TX_OFF);
     }
 
     // Get tuning parameters
@@ -233,24 +230,31 @@ esp_err_t write_STM_limits()
         return ESP_FAIL;
 }
 
-esp_err_t write_STM_command(stm32_command_t command)
+esp_err_t write_STM_command(TX_status command)
 {
     //create json file
     cJSON *root = cJSON_CreateObject();
-    if (command == SWITCH_ON)
+    if (command == TX_DEPLOY)
     {
         cJSON_AddStringToObject(root, "mode", "deploy");
-        selfPowerStatus = SWITCH_ON;
+        self_dynamic_payload.TX.tx_status = TX_DEPLOY;
+        strip_misalignment = strip_enable = false;
+        strip_charging = true;
+        //ESP_LOGW(TAG, "DEPLOY");
     }
-    else if (command == SWITCH_LOC)
+    else if (command == TX_LOCALIZATION)
     {
         cJSON_AddStringToObject(root, "mode", "localization");
-        selfPowerStatus = SWITCH_OFF;
+        self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
+        //ESP_LOGW(TAG, "LOC");
     }
-    else if (command == SWITCH_OFF)
+    else if (command == TX_OFF)
     {
         cJSON_AddStringToObject(root, "mode", "off");
-        selfPowerStatus = SWITCH_LOC;
+        self_dynamic_payload.TX.tx_status = TX_OFF;
+        strip_misalignment = strip_charging = false;
+        strip_enable = true;
+        //ESP_LOGW(TAG, "OFF");
     }
 
     char *my_json_string = cJSON_Print(root);
@@ -268,26 +272,27 @@ esp_err_t write_STM_command(stm32_command_t command)
 
     /*
     //Simulate POWER
-    if (command == SWITCH_ON)
+    if (command == TX_DEPLOY)
     {
         gpio_set_level(GPIO_OUTPUT_PIN, 1);
-        selfPowerStatus = SWITCH_ON;
+        self_dynamic_payload.TX.tx_status = TX_DEPLOY;
     }
-    else if (command == SWITCH_OFF)
+    else if (command == TX_OFF)
     {
         //ESP_LOGW(TAG, "OFF");
         gpio_set_level(GPIO_OUTPUT_PIN, 0);
-        selfPowerStatus = SWITCH_OFF;
+        self_dynamic_payload.TX.tx_status = TX_OFF;
     }
-    else if (command == SWITCH_LOC)
+    else if (command == TX_LOCALIZATION)
     {
         //ESP_LOGW(TAG, "ON");
         gpio_set_level(GPIO_OUTPUT_PIN, 1); //no localization mode for now
-        selfPowerStatus = SWITCH_LOC;
+        self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
     }
 
     return ESP_OK;
     */
+    
 }
 
 void uart_init(void) {
@@ -342,7 +347,7 @@ void TX_init_hw()
     xTaskCreate(rx_task, "uart_rx_task", UART_TASK_STACK_SIZE, NULL, UART_TASK_PRIORITY, NULL);
 
     // safely switch off
-    ESP_ERROR_CHECK(write_STM_command(SWITCH_OFF));
+    ESP_ERROR_CHECK(write_STM_command(TX_OFF));
     ESP_ERROR_CHECK(write_STM_limits());
 
     /** Simulate POWER */

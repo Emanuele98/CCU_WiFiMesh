@@ -222,7 +222,6 @@ static esp_err_t publish_json_data(const char *topic, const char *json_string)
 /*******************************************************
  *                TX Peer Publishing
  *******************************************************/
-
 static void publish_peer_data(struct TX_peer *peer)
 {
     char topic[128];
@@ -282,6 +281,7 @@ static void mqtt_publish_task(void *pvParameters)
 
             WITH_TX_PEERS_LOCKED {
                 SLIST_FOREACH(tx_peer, &TX_peers, next) {
+                    update_status(tx_peer);
                     publish_peer_data(tx_peer);
                 }
             }
@@ -341,13 +341,14 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
             {
                 if (strncmp(event->data, "1", event->data_len) == 0) {
                     ESP_LOGW(TAG, "Switch system ON - Dashboard command!");
-                    write_STM_command(SWITCH_LOC);
+                    write_STM_command(TX_LOCALIZATION);
                     //todo: also send ON to all connected pads? localization messed up!
                 } 
                 else if (strncmp(event->data, "0", event->data_len) == 0)
                 {
                     ESP_LOGW(TAG, "Switch system OFF - Dashboard command!");
-                    write_STM_command(SWITCH_OFF);
+                    write_STM_command(TX_OFF);
+                    previousTX_pos = 0; //reset localization process
                     //todo: also send OFF to all connected pads
                 }
             }

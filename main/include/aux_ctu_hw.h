@@ -48,15 +48,6 @@
 
 typedef enum 
 {
-    SWITCH_OFF,
-    SWITCH_LOC,
-    SWITCH_ON,
-} stm32_command_t;
-
-extern stm32_command_t selfPowerStatus;
-
-typedef enum 
-{
     NONE,
     OV,
     OC,
@@ -73,7 +64,7 @@ void TX_init_hw();
 /**
  * @brief Send switch ON command to the STM32
 */
-esp_err_t write_STM_command(stm32_command_t command);
+esp_err_t write_STM_command(TX_status command);
 
 /**
  * @brief Send the ALERTS limits to the STM32

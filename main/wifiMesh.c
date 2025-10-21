@@ -113,24 +113,18 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     //* Add peer strucutre
     if (received_payload->type == TX)
     {
-        struct TX_peer *p = TX_peer_add(received_payload->macAddr);
+        struct TX_peer *p = TX_peer_add(received_payload->macAddr, received_payload->id);
         if (p != NULL)
         {
             *p->static_payload = *received_payload;
-            p->id = received_payload->id;
-            p->position = p->id; // Position same as ID for TX
-            p->tx_status = TX_OFF;
             ESP_LOGI(TAG, "TX Peer structure added! ID: %d", p->static_payload->id);
         }
     }
     else if (received_payload->type == RX)
     {
-        struct RX_peer *p = RX_peer_add(received_payload->macAddr); 
+        struct RX_peer *p = RX_peer_add(received_payload->macAddr, received_payload->id); 
         if (p != NULL)
         {
-            p->id = received_payload->id;
-            p->position = -1; // Position unknown (variable) for RX
-            p->RX_status = RX_CONNECTED;
             ESP_LOGI(TAG, "RX Peer structure added! ID: %d", p->id);
         }
     }
@@ -217,9 +211,8 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_alert_payload_t *received_payload = (mesh_alert_payload_t *)data;
-    ESP_LOGI(TAG, "Received alert payload from MAC: "MACSTR,  MAC2STR(received_payload->TX.macAddr));
+    //ESP_LOGI(TAG, "Received alert payload from MAC: "MACSTR,  MAC2STR(received_payload->TX.macAddr));
 
-    //todo handle alert payload (swith off command and reconnect)
     struct TX_peer *p = TX_peer_find_by_mac(received_payload->TX.macAddr);
     if (p != NULL)
     {
@@ -229,6 +222,8 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         //ESP_LOGI(TAG, "TX: OV %d, OC %d, OT %d, FOD %d \n RX: OV: %d, OC %d, OT %d FC %d",
         //    p->alert_payload->TX.TX_internal.overvoltage, p->alert_payload->TX.TX_internal.overcurrent, p->alert_payload->TX.TX_internal.overtemperature, p->alert_payload->TX.TX_internal.FOD,
         //    p->alert_payload->RX.RX_internal.overvoltage, p->alert_payload->RX.RX_internal.overcurrent, p->alert_payload->RX.RX_internal.overtemperature, p->alert_payload->RX.RX_internal.FullyCharged);
+    
+        //todo handle alert payload (swith off command and reconnect)
     }
 
     return ESP_OK;
@@ -270,25 +265,25 @@ static esp_err_t control_to_child_raw_msg_process(uint8_t *data, uint32_t len,
     mesh_control_payload_t *received_payload = (mesh_control_payload_t *)data;
     //ESP_LOGI(TAG, "Received control payload for MAC: "MACSTR,  MAC2STR(received_payload->macAddr));
 
-    stm32_command_t command = (stm32_command_t)received_payload->command;
+    TX_status command = (TX_status)received_payload->command;
 
-    if (command == SWITCH_OFF)
+    if (command == TX_OFF)
     {
         ESP_LOGI(TAG, "Received command to SWITCH OFF");
-        write_STM_command(SWITCH_OFF);
+        write_STM_command(TX_OFF);
     }
     else if (memcmp(received_payload->macAddr, self_mac, ETH_HWADDR_LEN) == 0)
     {
         //ESP_LOGI(TAG, "Control message is for this unit");
-        if (command == SWITCH_ON)
+        if (command == TX_DEPLOY)
         {
             ESP_LOGI(TAG, "Received command to SWITCH ON");
-            write_STM_command(SWITCH_ON);
+            write_STM_command(TX_DEPLOY);
         }
-        else if (command == SWITCH_LOC)
+        else if (command == TX_LOCALIZATION)
         {
             ESP_LOGI(TAG, "Received command to SWITCH LOC");
-            write_STM_command(SWITCH_LOC);
+            write_STM_command(TX_LOCALIZATION);
         }
     }
 
@@ -331,6 +326,7 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
         p->position = received_payload->position;
         p->RX_status = RX_CHARGING;
         ESP_LOGI(TAG, "RX Peer ID %d localized at position %d", p->id, p->position);
+        previousTX_pos = 0;
     }
 
     return ESP_OK;
@@ -440,11 +436,23 @@ static void send_control_message_to_child(uint8_t *data, size_t data_len)
 
 static void send_alert_payload()
 {
+    struct TX_peer *p = TX_peer_find_by_mac(self_mac);
+    if (p!=NULL)
+        update_status(p);
+    else
+        ESP_LOGE(TAG, "self mac peer not found alert payload");
+
     send_alert_message_to_root((uint8_t*)&self_alert_payload, sizeof(mesh_alert_payload_t));
 }
 
 static void send_dynamic_payload()
 {
+    struct TX_peer *p = TX_peer_find_by_mac(self_mac);
+    if (p!=NULL)
+        update_status(p);
+    else
+        ESP_LOGE(TAG, "self mac peer not found dynamic payload");
+
     send_dynamic_message_to_root((uint8_t*)&self_dynamic_payload, sizeof(mesh_dynamic_payload_t));
 }
 
@@ -457,7 +465,7 @@ static void send_localization_payload(uint8_t pos, uint8_t *mac)
     send_localization_message_to_root((uint8_t*)&my_localization_payload, sizeof(mesh_localization_payload_t));
 }
 
-static void send_control_payload(stm32_command_t command, uint8_t *mac)
+static void send_control_payload(TX_status command, uint8_t *mac)
 {
     mesh_control_payload_t my_control_payload = {
         .command = (uint8_t)command,
@@ -475,6 +483,8 @@ static void send_static_payload(void)
 /* Parse received ESPNOW data. */
 static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
 {
+    //todo: disconnect when scooter leaves
+    
     //populate mesh lite dynamic payload
     memcpy(self_dynamic_payload.RX.macAddr, mac, ETH_HWADDR_LEN);
     self_dynamic_payload.RX.voltage = data->field_1;
@@ -482,7 +492,22 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
     self_dynamic_payload.RX.temp1 = data->field_3;
     self_dynamic_payload.RX.temp2 = data->field_4;
 
-    self_dynamic_payload.RX.rx_status = RX_CHARGING;
+    if (self_alert_payload.RX.RX_internal.FullyCharged)
+        self_dynamic_payload.RX.rx_status = RX_FULLY_CHARGED;
+    else if (self_alert_payload.RX.RX_all_flags) {
+        self_dynamic_payload.RX.rx_status = RX_ALERT;
+        self_dynamic_payload.TX.tx_status = TX_ALERT;
+    }
+    else if (self_dynamic_payload.TX.voltage > MIN_RX_VOLTAGE) {
+        self_dynamic_payload.RX.rx_status = RX_CHARGING;
+        strip_misalignment = strip_enable = false;
+        strip_charging = true;
+    }
+    else if (self_dynamic_payload.RX.voltage > MISALIGNED_LIMIT) {
+        self_dynamic_payload.RX.rx_status = RX_MISALIGNED;
+        strip_charging = strip_enable = false;
+        strip_misalignment = true;
+    }
 
     //Peer ID
     struct RX_peer* p = RX_peer_find_by_mac(mac);
@@ -495,7 +520,7 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
 static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
 {
     //switch off locally
-    write_STM_command(SWITCH_OFF);
+    write_STM_command(TX_OFF);
 
     //populate mesh lite alert payload 
     memcpy(self_alert_payload.RX.macAddr, mac, ETH_HWADDR_LEN);
@@ -504,7 +529,12 @@ static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
     self_alert_payload.RX.RX_internal.overtemperature = data->field_3;
     self_alert_payload.RX.RX_internal.FullyCharged = data->field_4;
 
-    self_dynamic_payload.RX.rx_status = RX_ALERT;
+    if (self_alert_payload.RX.RX_all_flags) {
+        self_dynamic_payload.RX.rx_status = RX_ALERT;
+        self_dynamic_payload.TX.tx_status = TX_ALERT;
+    }
+    else    
+        self_dynamic_payload.RX.rx_status = RX_CHARGING;
 
     //Peer ID
     struct RX_peer* p = RX_peer_find_by_mac(mac);
@@ -779,9 +809,11 @@ static void espnow_task(void *pvParameter)
                             if (is_root_node)
                             {
                                 // TX will tell the RX via ESP-NOW
-                                if (selfPowerStatus == SWITCH_LOC)
+                                if (self_dynamic_payload.TX.tx_status == TX_LOCALIZATION)
                                 {
                                     ESP_LOGI(TAG, "RX has been located to this TX (which is also the master)!");
+                                    write_STM_command(TX_DEPLOY);
+                                    previousTX_pos = 0;
                                     // Save peer and communicate via ESP-NOW
                                     add_peer_if_needed(recv_cb->mac_addr);
                                     // ask for dynamic data 
@@ -795,16 +827,12 @@ static void espnow_task(void *pvParameter)
                                         ESP_LOGI(TAG, "RX peer position updated to %d", p->position);
                                     }
                                 }
-                                else
-                                {
-                                    //ESP_LOGI(TAG, "RX has been located to pad x!");
-                                    //todo (later to make it more robust) advise other TX which then save the peer //p->position update (for double check)
-                                }
                             }
                             //Case 3 - I am TX - am I active? yes then tell master - no then discard
-                            else if (selfPowerStatus == SWITCH_LOC)
+                            else if (self_dynamic_payload.TX.tx_status == TX_LOCALIZATION)
                             {
                                 ESP_LOGI(TAG, "RX has been located to this pad!");
+                                write_STM_command(TX_DEPLOY);
                                 // Save peer and communicate via ESP-NOW
                                 add_peer_if_needed(recv_cb->mac_addr);
                                 // ask for dynamic data 
@@ -816,19 +844,13 @@ static void espnow_task(void *pvParameter)
                     }
                     else if (msg_type == DATA_ASK_DYNAMIC)
                     {
-                        if (is_root_node || UNIT_ROLE == TX){
-                            ESP_LOGE(TAG, "ASK dynamic received from TX - smth is wrong!");
-                        }
-                        else
-                        {
-                            ESP_LOGW(TAG, "Locking TX on ESPNOW!");
-                            // Save peer and communicate via ESP-NOW
-                            add_peer_if_needed(recv_cb->mac_addr);
-                            //save TX parent MAC addr
-                            memcpy(TX_parent_mac, recv_cb->mac_addr, ETH_HWADDR_LEN);
-                            DynTimeout = recv_data->field_1;
-                            rxLocalized = true;
-                        }
+                        ESP_LOGW(TAG, "Locking TX on ESPNOW!");
+                        // Save peer and communicate via ESP-NOW
+                        add_peer_if_needed(recv_cb->mac_addr);
+                        //save TX parent MAC addr
+                        memcpy(TX_parent_mac, recv_cb->mac_addr, ETH_HWADDR_LEN);
+                        DynTimeout = recv_data->field_1;
+                        rxLocalized = true;
                     }
                     else if(msg_type == DATA_DYNAMIC)
                     {
@@ -858,49 +880,47 @@ static void espnow_task(void *pvParameter)
     free(espnow_data);
 }
 
-// return true if changed - false if same
-static bool pass_the_baton(int8_t *previousTX_pos)
+static void reset_the_baton()
 {
-    // Find next available TX for localization
-    // If pos equal to self-pos, use local switch on function 
-    // otherwise, Put its MAC address in control payload to address him only (mesh-lite command)
-    // Switch it ON and update list structures
+    // switch all TX available for localization OFF (mesh-lite and local switch off)
+    send_control_payload(TX_OFF, broadcast_mac); //broadcast
+    write_STM_command(TX_OFF);
 
-    struct TX_peer* p = find_next_TX_for_localization(*previousTX_pos);
-    p->tx_status = TX_LOCALIZATION;
+    // update list structures
+    allLocalizationTxPeersOFF();
+}
 
-    bool changed = false;
-    uint8_t prev = *previousTX_pos;
-    if (prev != p->position)
-        changed = true;
-
-    if (changed)
+static void pass_the_baton()
+{
+    struct TX_peer* p = find_next_TX_for_localization(previousTX_pos);
+    if (p == NULL)
     {
+        ESP_LOGE(TAG, "TX peer not found during localization");
+        return;
+    }
+    p->dynamic_payload->TX.tx_status = TX_LOCALIZATION;
+
+    //if (previousTX_pos != p->position)
+    //{
+        //switch all OFF
+        reset_the_baton();
+        vTaskDelay(800);
+
+        //switch next ON
         if(p->position == CONFIG_UNIT_ID)
         {
             ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
-            write_STM_command(SWITCH_LOC);
+            write_STM_command(TX_LOCALIZATION);
         }
         else
         {
             ESP_LOGI(TAG, "Next TX for localization is ID %d, switching it ON via mesh-lite", p->position);
-            send_control_payload(SWITCH_LOC, p->MACaddress);
+            send_control_payload(TX_LOCALIZATION, p->MACaddress);
         }
-    }
+        vTaskDelay(800);
 
-    *previousTX_pos = p->position;
-
-    return changed;
-}
-
-static void reset_the_baton()
-{
-    // switch all TX available for localization OFF (mesh-lite and local switch off)
-    send_control_payload(SWITCH_OFF, broadcast_mac); //broadcast
-    write_STM_command(SWITCH_OFF);
-
-    // update list structures
-    allLocalizationTxPeersOFF();
+        previousTX_pos = p->position;
+    //}
 }
 
 static void alert_task(void *pvParameters)
@@ -922,6 +942,12 @@ static void alert_task(void *pvParameters)
                 ESP_LOGW(TAG, "Sending alert via Mesh-Lite");
                 send_alert_payload();
                 self_previous_alert_payload = self_alert_payload;
+            }
+            //LEDs
+            if (UNIT_ROLE == TX && (self_alert_payload.TX.TX_all_flags || self_alert_payload.RX.RX_all_flags))
+            {
+                strip_charging = strip_enable = strip_misalignment = false;
+                set_strip(200, 0, 0);
             }
         }
 
@@ -947,7 +973,6 @@ static void wifi_mesh_lite_task(void *pvParameters)
     };
     esp_mesh_lite_raw_msg_action_list_register(raw_actions);
 
-    static int8_t previousTX_position = -1;
     static uint32_t lastDynamic = 0;
 
     while (1) 
@@ -959,13 +984,7 @@ static void wifi_mesh_lite_task(void *pvParameters)
                 // take care of sequential switching during localization
                 if (atLeastOneRxNeedLocalization())
                 {
-                    //pass the baton
-                    bool changed = pass_the_baton(&previousTX_position);
-                    vTaskDelay(pdMS_TO_TICKS(500)); // Delay 
-                    //switch off 
-                    if (changed)
-                        reset_the_baton();
-                    vTaskDelay(pdMS_TO_TICKS(500)); // Delay
+                    pass_the_baton();
                     //todo (make this smarter /hybrid for dead battery sceanario)
                 }
             }
@@ -1006,7 +1025,7 @@ static void wifi_mesh_lite_task(void *pvParameters)
                 }
             } 
         }
-        vTaskDelay(pdMS_TO_TICKS(10)); // Delay for 100ms
+        vTaskDelay(pdMS_TO_TICKS(10)); // Delay for 10ms
     }
 
     vTaskDelete(NULL);
@@ -1051,7 +1070,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
             ESP_LOGI(TAG, "Node left: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             // Remove node from list
-            peer_delete(node_info->mac_addr);
+            peer_delete(node_info->mac_addr); // update status on tx payload
             break;
         case ESP_MESH_LITE_EVENT_NODE_CHANGE:
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_CHANGE>");
@@ -1231,7 +1250,7 @@ void wifi_mesh_init()
     }
 
     // Create ESPNOW task
-    ESP_ERROR_CHECK(xTaskCreate(espnow_task, "espnow_task", 4096, NULL, 8, NULL));
+    ESP_ERROR_CHECK(xTaskCreate(espnow_task, "espnow_task", 4096, NULL, 10, NULL));
 
     // Create alert high priority task
     ESP_ERROR_CHECK(xTaskCreate(alert_task, "alert_task", 4096, NULL, 11, NULL));

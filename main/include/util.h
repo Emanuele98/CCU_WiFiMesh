@@ -36,12 +36,9 @@
 #include "esp_bridge.h"
 #include "esp_mesh_lite.h"
 
-#include "aux_ctu_hw.h"
-#include "cru_hw.h"
-
 /* MISALIGNMENT LIMITS */
 #define SCOOTER_LEFT_LIMIT                  10
-#define MISALIGNED_LIMIT                    50
+#define MISALIGNED_LIMIT                    30
 
 /* ALERTS LIMITS TX */
 #define OVERCURRENT_TX                      2.2
@@ -53,7 +50,7 @@
 #define OVERCURRENT_RX                      2
 #define OVERVOLTAGE_RX                      100
 #define OVERTEMPERATURE_RX                  60
-#define MIN_RX_VOLTAGE                      50
+#define MIN_RX_VOLTAGE                      60
 
 /* LOC TIMING */
 #define REACTION_TIME                       1000    //milliseconds
@@ -127,6 +124,18 @@ extern EventGroupHandle_t eventGroupHandle;
 
 //Self-MAC address
 extern uint8_t self_mac[ETH_HWADDR_LEN];
+
+// Localization variable
+extern int8_t previousTX_pos;
+
+/** Status variable */
+typedef enum {
+    TX_OFF,                //when the pad is off
+    TX_LOCALIZATION,       //when the pad is active for localization (soft duty cycle thresholds) 
+    TX_DEPLOY,             //when the pad is active on deploy (hard duty cycle thresholds)
+    TX_FULLY_CHARGED,      //when the pad is off but a fully charged scooter is still present on it
+    TX_ALERT               //when the pad sent an alert (overcurrent, overvoltage, overtemperature, FOD)
+} TX_status;
 
 /**
  * @brief Init the values on NVS - This allows to keep track of each peer's minimum reconnection time over reboots.

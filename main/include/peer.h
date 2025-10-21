@@ -2,6 +2,8 @@
 #define PEER_H
 
 #include "util.h"
+#include "aux_ctu_hw.h"
+#include "cru_hw.h"
 
 // Delta on sensor-values for sending updates
 #define DELTA_VOLTAGE 10.0
@@ -16,29 +18,13 @@ typedef enum {
 extern peer_type UNIT_ROLE;
 
 typedef enum {
-    TX_OFF,                //when the pad is off
-    TX_LOCALIZATION,       //when the pad is active for localization (soft duty cycle thresholds) 
-    TX_DEPLOY,             //when the pad is active on deploy (hard duty cycle thresholds)
-    TX_FULLY_CHARGED,      //when the pad is off but a fully charged scooter is still present on it
-    TX_ALERT               //when the pad sent an alert (overcurrent, overvoltage, overtemperature, FOD)
-} TX_status;
-
-typedef enum {
+    RX_NOT_PRESENT,     //when RX not present
     RX_CONNECTED,      //when the scooter is connected but not localized yet
     RX_CHARGING,       //when the position is found
     RX_MISALIGNED,     //when the scooter is misaligned
     RX_FULLY_CHARGED,  //when the scooter is still on the pad but fully charged
-    RX_ALERT           //when the scooter sent an alert (overcurrent, overvoltage, overtemperature)
+    RX_ALERT          //when the scooter sent an alert (overcurrent, overvoltage, overtemperature)
 } RX_status;
-
-typedef enum {
-    LED_OFF,
-    LED_CONNECTED,
-    LED_CHARGING,
-    LED_MISALIGNED,
-    LED_FULLY_CHARGED,
-    LED_ALERT,
-} led_command_type;
 
 /**
  * @brief Static characteristic structure. This contains elements necessary for static payload.
@@ -171,12 +157,6 @@ struct TX_peer
     /* MAC ADDRESS OF THE TX */
     uint8_t MACaddress[6];
 
-    /* STATUS OF THE CHARGING PAD */
-    TX_status tx_status;
-
-    /* LED STATUS OF THE CHARGING PAD */
-    led_command_type led_command;
-
     /** Peripheral payloads. */
     mesh_static_payload_t *static_payload;
     mesh_dynamic_payload_t *dynamic_payload, *previous_dynamic_payload; // previous is used for comparison for sending logic
@@ -280,7 +260,7 @@ void peer_init();
  * @param mac MAC address of the new peer
  * @return TX_peer on success, NULL if unable to add (list full or duplicate ID)
  */
-struct TX_peer* TX_peer_add(uint8_t *mac);
+struct TX_peer* TX_peer_add(uint8_t *mac, uint8_t id);
 
 /**
  * @brief Add a new RX peer to the RX_peers list
@@ -288,7 +268,7 @@ struct TX_peer* TX_peer_add(uint8_t *mac);
  * @param mac MAC address of the new peer
  * @return RX_peer on success, NULL if unable to add (list full or duplicate ID)
  */
-struct RX_peer* RX_peer_add(uint8_t *mac);
+struct RX_peer* RX_peer_add(uint8_t *mac, uint8_t id);
 
 /**
  * @brief Find a TX_peer by its MAC address
@@ -371,5 +351,11 @@ bool alert_payload_changed(mesh_alert_payload_t *current,
  * 
  */
 void init_payloads();
+
+/**
+ * @brief Update dynamic payload status
+ * 
+ */
+void update_status(struct TX_peer *peer);
 
 #endif /* PEER_H */

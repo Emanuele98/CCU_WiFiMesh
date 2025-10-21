@@ -70,12 +70,10 @@ void peer_init()
 
     delete_all_peers();
 
-    struct TX_peer *p = TX_peer_add(self_mac);
+    struct TX_peer *p = TX_peer_add(self_mac, CONFIG_UNIT_ID);
     if (p != NULL) 
     {
         ESP_LOGI(TAG, "Added self TX peer with ID %d", CONFIG_UNIT_ID);
-        p->id = CONFIG_UNIT_ID;
-        p->position = p->id; // Position same as ID for TX
 
         // Free the malloc'd memory first to avoid leak
         if (p->static_payload)
@@ -109,8 +107,8 @@ void allLocalizationTxPeersOFF()
     WITH_TX_PEERS_LOCKED {
         struct TX_peer *p;
         SLIST_FOREACH(p, &TX_peers, next) {
-            if (p->tx_status == TX_LOCALIZATION) {
-                p->tx_status = TX_OFF;
+            if (p->dynamic_payload->TX.tx_status == TX_LOCALIZATION) {
+                p->dynamic_payload->TX.tx_status = TX_OFF;
             }
         }
     }
@@ -120,12 +118,12 @@ struct TX_peer* find_next_TX_for_localization(int8_t previousTX_pos)
 {
     struct TX_peer *result = NULL;
     struct TX_peer *first_available = NULL;
-    bool found_previous = (previousTX_pos == -1);
+    bool found_previous = (!previousTX_pos);
     
     WITH_TX_PEERS_LOCKED {
         struct TX_peer *p;
         SLIST_FOREACH(p, &TX_peers, next) {
-            if (p->tx_status == TX_OFF || p->tx_status == TX_LOCALIZATION) {
+            if (p->dynamic_payload->TX.tx_status == TX_OFF || p->dynamic_payload->TX.tx_status == TX_LOCALIZATION) {
                 if (first_available == NULL) {
                     first_available = p;
                 }
@@ -235,6 +233,27 @@ struct RX_peer* RX_peer_find_by_position(int8_t position)
     return result;
 }
 
+void removeRelativeRX(int8_t pos)
+{
+    // Atomic: Find and remove in one critical section
+    WITH_TX_PEERS_LOCKED {
+        struct TX_peer *p;
+        SLIST_FOREACH(p, &TX_peers, next) {
+            if (p->dynamic_payload->RX.id == pos) 
+            {
+                memset(p->dynamic_payload->RX.macAddr, 0, ETH_HWADDR_LEN);
+                p->dynamic_payload->RX.rx_status = RX_NOT_PRESENT;
+                p->dynamic_payload->RX.id = 0;
+                p->dynamic_payload->RX.current = p->dynamic_payload->RX.voltage = p->dynamic_payload->RX.temp1 = p->dynamic_payload->RX.temp2 = 0;
+                
+                //todo switch off!
+                break;
+            }
+        }
+    }
+    
+}
+
 // =============================================================================
 // SAFE PEER DELETION - Atomic find and remove
 // =============================================================================
@@ -296,6 +315,8 @@ void peer_delete(uint8_t *mac)
         struct RX_peer *p;
         SLIST_FOREACH(p, &RX_peers, next) {
             if (memcmp(p->MACaddress, mac, 6) == 0) {
+                //remove from relative TX (if any)
+                removeRelativeRX(p->id);
                 SLIST_REMOVE(&RX_peers, p, RX_peer, next);
                 RX_p = p;
                 break;
@@ -368,13 +389,13 @@ bool atLeastOneRxNeedLocalization()
             struct RX_peer *RX_p;
             SLIST_FOREACH(RX_p, &RX_peers, next) 
             {
-                if (RX_p->position == -1)  // Not localized yet
+                if (!RX_p->position)  // Not localized yet
                 {
                     struct TX_peer *TX_p;
                     SLIST_FOREACH(TX_p, &TX_peers, next) 
                     {
-                        if (TX_p->tx_status == TX_OFF || 
-                            TX_p->tx_status == TX_LOCALIZATION)
+                        if (TX_p->dynamic_payload->TX.tx_status == TX_OFF || 
+                            TX_p->dynamic_payload->TX.tx_status == TX_LOCALIZATION)
                         {
                             result = true;
                             break;  // OK - breaks inner loop only
@@ -393,7 +414,7 @@ bool atLeastOneRxNeedLocalization()
 // ADD FUNCTIONS - guard to list insertion
 // =============================================================================
 
-struct TX_peer* TX_peer_add(uint8_t *mac)
+struct TX_peer* TX_peer_add(uint8_t *mac, uint8_t id)
 {
     struct TX_peer *p;
 
@@ -446,8 +467,15 @@ struct TX_peer* TX_peer_add(uint8_t *mac)
 
     // Initialize peer parameters
     memcpy(p->MACaddress, mac, 6);
-    p->tx_status = TX_OFF;
-    p->led_command = LED_CONNECTED;
+    memcpy(p->static_payload->macAddr, mac, ETH_HWADDR_LEN);
+    memcpy(p->dynamic_payload->TX.macAddr, mac, ETH_HWADDR_LEN);
+    memcpy(p->alert_payload->TX.macAddr, mac, ETH_HWADDR_LEN);
+    memcpy(p->tuning_params->macAddr, mac, ETH_HWADDR_LEN);
+    p->dynamic_payload->TX.tx_status = TX_OFF;
+    p->static_payload->id = p->dynamic_payload->TX.id = p->alert_payload->TX.id = id;
+    p->position = p->id = id; // Position same as ID for TX  
+    *p->previous_dynamic_payload = *p->dynamic_payload;
+    *p->previous_alert_payload = *p->alert_payload;
 
     struct TX_peer *existing;
 
@@ -480,7 +508,7 @@ cleanup_and_return_existing:
     return existing;  // Return the one that won the race
 }
 
-struct RX_peer* RX_peer_add(uint8_t *mac)
+struct RX_peer* RX_peer_add(uint8_t *mac, uint8_t id)
 {
     struct RX_peer *p;
 
@@ -503,8 +531,9 @@ struct RX_peer* RX_peer_add(uint8_t *mac)
     memset(p, 0, sizeof * p);
 
     memcpy(p->MACaddress, mac, 6);
-    p->RX_status = RX_CONNECTED;
-    p->position = -1;
+    p->RX_status = RX_NOT_PRESENT;
+    p->position = 0;
+    p->id = id;
 
     struct RX_peer *existing;
 
@@ -572,6 +601,8 @@ bool dynamic_payload_changed(mesh_dynamic_payload_t *current,
         res = true;
         //ESP_LOGW(TAG, "Temp2 change detected: %.2f %.2f C", current->RX.temp2, previous->RX.temp2);
     }
+    if (current->TX.tx_status != previous->TX.tx_status || current->RX.rx_status != previous->RX.rx_status)
+        res = true;
 
     return res;
 }
@@ -581,14 +612,8 @@ bool alert_payload_changed(mesh_alert_payload_t *current,
 {
     bool res = false;
 
-    if ((current->TX.TX_internal.overvoltage != previous->TX.TX_internal.overcurrent)
-        || (current->TX.TX_internal.overcurrent != previous->TX.TX_internal.overcurrent)
-        || (current->TX.TX_internal.overtemperature != previous->TX.TX_internal.overtemperature)
-        || (current->TX.TX_internal.FOD != previous->TX.TX_internal.FOD)
-        || (current->RX.RX_internal.overvoltage != previous->RX.RX_internal.overvoltage)
-        || (current->RX.RX_internal.overcurrent != previous->RX.RX_internal.overcurrent)
-        || (current->RX.RX_internal.overtemperature != previous->RX.RX_internal.overtemperature)
-        || (current->RX.RX_internal.FullyCharged != previous->RX.RX_internal.FullyCharged))
+    if ((current->TX.TX_all_flags != previous->TX.TX_all_flags)
+        || (current->RX.RX_all_flags != previous->RX.RX_all_flags))
     {
         res = true;
     }
@@ -627,3 +652,31 @@ void init_payloads()
     }
 }
 
+void update_status(struct TX_peer *peer)
+{
+    //TX status
+    if (peer->alert_payload->TX.TX_all_flags)
+        peer->dynamic_payload->TX.tx_status = TX_ALERT;
+    else if (peer->dynamic_payload->TX.tx_status == TX_LOCALIZATION)
+        peer->dynamic_payload->TX.tx_status = TX_LOCALIZATION;
+    else if (peer->dynamic_payload->RX.id != 0)
+        peer->dynamic_payload->TX.tx_status = TX_DEPLOY;
+    else
+        peer->dynamic_payload->TX.tx_status = TX_OFF;
+
+    // RX status
+    if (peer->alert_payload->RX.RX_internal.FullyCharged)
+        peer->dynamic_payload->RX.rx_status = RX_FULLY_CHARGED;
+    else if (peer->alert_payload->RX.RX_all_flags) {
+        peer->dynamic_payload->RX.rx_status = RX_ALERT;
+        peer->dynamic_payload->TX.tx_status = TX_ALERT;
+    }
+    else if (peer->dynamic_payload->RX.voltage > MIN_RX_VOLTAGE)
+        peer->dynamic_payload->RX.rx_status = RX_CHARGING;
+    else if (peer->dynamic_payload->RX.voltage > MISALIGNED_LIMIT)
+        peer->dynamic_payload->RX.rx_status = RX_MISALIGNED;
+    else if (peer->dynamic_payload->RX.id != 0)
+        peer->dynamic_payload->RX.rx_status = RX_CONNECTED;
+    else 
+        peer->dynamic_payload->RX.rx_status = RX_NOT_PRESENT;
+}
