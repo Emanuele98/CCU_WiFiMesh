@@ -20,7 +20,7 @@
 - WiFi router with internet access
 
 **Software:**
-- [PlatformIO](https://platformio.org/) (recommended) or ESP-IDF v5.5.1
+- ESP-IDF v5.5.1
 - Python 3.7+
 - Git
 
@@ -47,16 +47,10 @@ CONFIG_MESH_ROUTER_PASSWORD="YourWiFiPassword"
 
 Update MQTT broker address in `main/include/mqtt_client_manager.h`:
 ```c
-#define MQTT_BROKER_URI "mqtt://192.168.1.92:1883"  // Your MQTT broker IP
+#define MQTT_BROKER_URI "mqtt://15.188.29.195:1883"  // Your MQTT broker IP
 ```
 
 #### 3. Build and Flash
-
-**Using PlatformIO:**
-```bash
-pio run --target upload
-pio device monitor  # View serial output
-```
 
 **Using ESP-IDF:**
 ```bash
@@ -113,13 +107,13 @@ Bumblebee implements a **WiFi Mesh-Lite network** with **ESP-NOW** for low-laten
                   │        │
          ┌────────▼──┐  ┌──▼────────┐
          │  TX2      │  │  TX3      │
-         └─┬──┬──┬───┘  └───┬──┬──┬─┘
-           │  │  │          │  │  │
-     ESP-NOW (P2P direct)   │  │  │
-           │  │  │          │  │  │
-         ┌─▼──▼──▼───┐  ┌───▼──▼──▼─┐
-         │ RX1 RX2 RX3│  │RX4 RX5 RX6│
-         └────────────┘  └───────────┘
+         └────┬──────┘  └──────┬────┘
+              │                │  
+       ESP-NOW|                │ESP-NOW  
+              │                │  
+         ┌────▼──────┐  ┌──────▼────┐
+         │   RX1     │  │    RX2    │
+         └───────────┘  └───────────┘
 ```
 
 ### Key Components

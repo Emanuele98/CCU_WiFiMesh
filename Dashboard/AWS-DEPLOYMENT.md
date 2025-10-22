@@ -479,7 +479,7 @@ docker volume prune          # Remove unused volumes
 
 Your Bumblebee monitoring system is now running on AWS Lightsail!
 
-**Dashboard URL**: `http://15.188.29.195:1880/bumblebee/dashboard`
+**Dashboard URL**: `http://15.188.29.195:1880/dashboard/bumblebee`
 
 **Next Steps:**
 1. Configure your ESP32 devices to connect to the production MQTT broker

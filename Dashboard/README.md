@@ -93,10 +93,9 @@
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Dashboard | http://15.188.29.195:1880/:1880/dashboard/bumblebee | None |
-| Node-RED | http://15.188.29.195:1880/:1880 | None |
-| InfluxDB | http://15.188.29.195:1880/:8086 | admin / bumblebee2025 |
-| MQTT | localhost:1883 | None |
+| Dashboard | http://15.188.29.195:1880/dashboard/bumblebee | None |
+| Node-RED | http://15.188.29.195:1880 | None |
+| InfluxDB | http://15.188.29.195:8086 | admin / bumblebee2025 |
 
 ## 🛠️ Management
 
