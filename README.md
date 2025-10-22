@@ -123,7 +123,7 @@ Bumblebee implements a **WiFi Mesh-Lite network** with **ESP-NOW** for low-laten
 | Type | Role | Capabilities |
 |------|------|-------------|
 | **TX** | Transmitter / Charging Pad | - Sensor monitoring (V, I, T)<br>- WiFi Mesh participant<br>- ESP-NOW sender/receiver<br>- Can become MASTER<br>- MQTT publishing (if MASTER) |
-| **RX** | Receiver / Scooter Unit | - Sensor monitoring (V, I, T)<br>- ESP-NOW sender only<br>- No mesh participation<br>- Battery charging status |
+| **RX** | Receiver / Scooter Unit | - Sensor monitoring (V, I, T)<br>- ESP-NOW sender only<br>- Sporadic mesh participation<br>- Battery charging status |
 | **MASTER** | Root Node | - TX unit elected as root<br>- MQTT broker connection<br>- Data aggregation<br>- Control distribution |
 
 #### 2. **Communication Layers**
