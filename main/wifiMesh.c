@@ -436,23 +436,11 @@ static void send_control_message_to_child(uint8_t *data, size_t data_len)
 
 static void send_alert_payload()
 {
-    struct TX_peer *p = TX_peer_find_by_mac(self_mac);
-    if (p!=NULL)
-        update_status(p);
-    else
-        ESP_LOGE(TAG, "self mac peer not found alert payload");
-
     send_alert_message_to_root((uint8_t*)&self_alert_payload, sizeof(mesh_alert_payload_t));
 }
 
 static void send_dynamic_payload()
 {
-    struct TX_peer *p = TX_peer_find_by_mac(self_mac);
-    if (p!=NULL)
-        update_status(p);
-    else
-        ESP_LOGE(TAG, "self mac peer not found dynamic payload");
-
     send_dynamic_message_to_root((uint8_t*)&self_dynamic_payload, sizeof(mesh_dynamic_payload_t));
 }
 
@@ -948,10 +936,11 @@ static void alert_task(void *pvParameters)
             {
                 strip_charging = strip_enable = strip_misalignment = false;
                 set_strip(200, 0, 0);
+                //vTaskDelay(1000*60*2); // wait 2 minutes before clearing
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1)); //minimum wait
+        vTaskDelay(pdMS_TO_TICKS(5)); //minimum wait
     }
 }
 
@@ -1087,7 +1076,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             { 
                 // Initialize peer management (adding myself)
                 peer_init();
-
+                
                 // Initialize MQTT client manager
                 esp_err_t ret = mqtt_client_manager_init();
                 if (ret != ESP_OK) {
@@ -1095,6 +1084,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
                 } else {
                     ESP_LOGI(TAG, "MQTT client manager started successfully");
                 }
+                
             }
             break;
         case ESP_MESH_LITE_EVENT_CORE_STARTED:
@@ -1153,8 +1143,8 @@ static void wifi_init(void)
     // Station config (yes router connection)
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = "manu",//CONFIG_MESH_ROUTER_SSID,
-            .password = "cherrycookies",//CONFIG_MESH_ROUTER_PASSWD,
+            .ssid = CONFIG_MESH_ROUTER_SSID,
+            .password = CONFIG_MESH_ROUTER_PASSWD,
         },
     };
     
@@ -1235,7 +1225,7 @@ void wifi_mesh_init()
     // WiFi Mesh Lite task
     ESP_ERROR_CHECK(xTaskCreate(wifi_mesh_lite_task, "wifi_mesh_lite_task", 10000, NULL, 10, NULL));
 
-    //* ESP-NOW
+    // ESP-NOW
     // Initialize ESP-NOW through mesh-lite //max payload ESPNOW_PAYLOAD_MAX_LEN
     // Register receive callback through mesh-lite function
     ESP_ERROR_CHECK(esp_mesh_lite_espnow_recv_cb_register(ESPNOW_DATA_TYPE_RESERVE, my_espnow_recv_cb));

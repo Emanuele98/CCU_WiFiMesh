@@ -10,7 +10,7 @@
 
 /* Publishing intervals */
 #define MQTT_MIN_PUBLISH_INTERVAL_MS 30000                      // 30s
-#define MQTT_RECONNECT_INTERVAL_MS 5000                         //  5s
+#define MQTT_RECONNECT_INTERVAL_MS 20000                        // 20s
 
 /**
  * @brief Initialize MQTT client and start publishing task (root node only)

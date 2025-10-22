@@ -42,7 +42,6 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_master_init());
     
     /* I2C scan to detect TX or RX */
-    /*
     i2c_scan_bus();
     if (i2c_device_present(T1_SENSOR_ADDR) || i2c_device_present(T2_SENSOR_ADDR)) {
         UNIT_ROLE = RX;
@@ -52,7 +51,6 @@ void app_main(void)
         UNIT_ROLE = TX;
         ESP_LOGI(TAG, "TX unit detected via I2C scan");
     }
-    */
 
     //Create group event 
     eventGroupHandle = xEventGroupCreate();

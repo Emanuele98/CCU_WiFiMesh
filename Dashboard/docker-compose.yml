@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  # ===============================================
+  # MOSQUITTO - MQTT Broker
+  # ===============================================
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: bumblebee-mosquitto
+    ports:
+      - "1883:1883"      # MQTT
+      - "9001:9001"      # WebSocket (optional)
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - bumblebee-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===============================================
+  # INFLUXDB - Time Series Database
+  # ===============================================
+  influxdb:
+    image: influxdb:2.7
+    container_name: bumblebee-influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=bumblebee2024
+      - DOCKER_INFLUXDB_INIT_ORG=bumblebee
+      - DOCKER_INFLUXDB_INIT_BUCKET=sensor_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=bumblebee-super-secret-token
+      - DOCKER_INFLUXDB_INIT_RETENTION=0
+    networks:
+      - bumblebee-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===============================================
+  # TELEGRAF - Data Bridge (MQTT to InfluxDB)
+  # ===============================================
+  telegraf:
+    image: telegraf:1.28
+    container_name: bumblebee-telegraf
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    networks:
+      - bumblebee-network
+    restart: unless-stopped
+
+  # ===============================================
+  # NODE-RED - Real-time Dashboard
+  # ===============================================
+  nodered:
+    image: nodered/node-red:latest
+    container_name: bumblebee-nodered
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+    environment:
+      - TZ=Europe/Rome
+      - NODE_RED_ENABLE_PROJECTS=false
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - bumblebee-network
+    restart: unless-stopped
+
+# ===============================================
+# NETWORKS
+# ===============================================
+networks:
+  bumblebee-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ===============================================
+# VOLUMES (Persistent Data)
+# ===============================================
+volumes:
+  mosquitto_data:
+    driver: local
+  mosquitto_log:
+    driver: local
+  influxdb_data:
+    driver: local
+  influxdb_config:
+    driver: local
+  nodered_data:
+    driver: local

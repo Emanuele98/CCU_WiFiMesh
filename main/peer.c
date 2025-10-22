@@ -654,29 +654,31 @@ void init_payloads()
 
 void update_status(struct TX_peer *peer)
 {
-    //TX status
-    if (peer->alert_payload->TX.TX_all_flags)
-        peer->dynamic_payload->TX.tx_status = TX_ALERT;
-    else if (peer->dynamic_payload->TX.tx_status == TX_LOCALIZATION)
-        peer->dynamic_payload->TX.tx_status = TX_LOCALIZATION;
-    else if (peer->dynamic_payload->RX.id != 0)
-        peer->dynamic_payload->TX.tx_status = TX_DEPLOY;
-    else
-        peer->dynamic_payload->TX.tx_status = TX_OFF;
+    WITH_TX_PEERS_LOCKED {
+        //TX status
+        if (peer->alert_payload->TX.TX_all_flags)
+            peer->dynamic_payload->TX.tx_status = TX_ALERT;
+        else if (peer->dynamic_payload->TX.tx_status == TX_LOCALIZATION)
+            peer->dynamic_payload->TX.tx_status = TX_LOCALIZATION;
+        else if (peer->dynamic_payload->RX.id != 0)
+            peer->dynamic_payload->TX.tx_status = TX_DEPLOY;
+        else
+            peer->dynamic_payload->TX.tx_status = TX_OFF;
 
-    // RX status
-    if (peer->alert_payload->RX.RX_internal.FullyCharged)
-        peer->dynamic_payload->RX.rx_status = RX_FULLY_CHARGED;
-    else if (peer->alert_payload->RX.RX_all_flags) {
-        peer->dynamic_payload->RX.rx_status = RX_ALERT;
-        peer->dynamic_payload->TX.tx_status = TX_ALERT;
+        // RX status
+        if (peer->alert_payload->RX.RX_internal.FullyCharged)
+            peer->dynamic_payload->RX.rx_status = RX_FULLY_CHARGED;
+        else if (peer->alert_payload->RX.RX_all_flags) {
+            peer->dynamic_payload->RX.rx_status = RX_ALERT;
+            peer->dynamic_payload->TX.tx_status = TX_ALERT;
+        }
+        else if (peer->dynamic_payload->RX.voltage > MIN_RX_VOLTAGE)
+            peer->dynamic_payload->RX.rx_status = RX_CHARGING;
+        else if (peer->dynamic_payload->RX.voltage > MISALIGNED_LIMIT)
+            peer->dynamic_payload->RX.rx_status = RX_MISALIGNED;
+        else if (peer->dynamic_payload->RX.id != 0)
+            peer->dynamic_payload->RX.rx_status = RX_CONNECTED;
+        else 
+            peer->dynamic_payload->RX.rx_status = RX_NOT_PRESENT;
     }
-    else if (peer->dynamic_payload->RX.voltage > MIN_RX_VOLTAGE)
-        peer->dynamic_payload->RX.rx_status = RX_CHARGING;
-    else if (peer->dynamic_payload->RX.voltage > MISALIGNED_LIMIT)
-        peer->dynamic_payload->RX.rx_status = RX_MISALIGNED;
-    else if (peer->dynamic_payload->RX.id != 0)
-        peer->dynamic_payload->RX.rx_status = RX_CONNECTED;
-    else 
-        peer->dynamic_payload->RX.rx_status = RX_NOT_PRESENT;
 }

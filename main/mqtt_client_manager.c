@@ -288,7 +288,7 @@ static void mqtt_publish_task(void *pvParameters)
         }
         
         // Check every 1 second
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
     
     vTaskDelete(NULL);
@@ -392,7 +392,7 @@ esp_err_t mqtt_client_manager_init(void)
     
     // Create publishing task
     BaseType_t ret = xTaskCreate(mqtt_publish_task, "mqtt_publish", 
-                                 4096, NULL, 5, &mqtt_publish_task_handle);
+                                 10006, NULL, 4, &mqtt_publish_task_handle);
     
     if (ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create MQTT publish task");

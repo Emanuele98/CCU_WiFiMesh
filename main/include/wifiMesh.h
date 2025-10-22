@@ -6,20 +6,20 @@
 #include "mqtt_client_manager.h"
 
 /* Mesh-LITE*/
-#define TO_ROOT_STATIC_MSG_ID               0x1000
-#define TO_ROOT_STATIC_MSG_ID_RESP          0x1001
+#define TO_ROOT_STATIC_MSG_ID               0x100
+#define TO_ROOT_STATIC_MSG_ID_RESP          0x101
 
-#define TO_ROOT_DYNAMIC_MSG_ID              0x1002
-#define TO_ROOT_DYNAMIC_MSG_ID_RESP         0x1003
+#define TO_ROOT_DYNAMIC_MSG_ID              0x102
+#define TO_ROOT_DYNAMIC_MSG_ID_RESP         0x103
 
-#define TO_ROOT_ALERT_MSG_ID                0x1004
-#define TO_ROOT_ALERT_MSG_ID_RESP           0x1005
+#define TO_ROOT_ALERT_MSG_ID                0x104
+#define TO_ROOT_ALERT_MSG_ID_RESP           0x105
 
-#define TO_ROOT_LOCALIZATION_ID             0x1006
-#define TO_ROOT_LOCALIZATION_ID_RESP        0x1007
+#define TO_ROOT_LOCALIZATION_ID             0x106
+#define TO_ROOT_LOCALIZATION_ID_RESP        0x107
 
-#define TO_CHILD_CONTROL_MSG_ID             0x1008
-#define TO_CHILD_CONTROL_MSG_ID_RESP        0x1009
+#define TO_CHILD_CONTROL_MSG_ID             0x108
+#define TO_CHILD_CONTROL_MSG_ID_RESP        0x109
 
 /* ESP-NOW*/
 #define ESPNOW_QUEUE_MAXDELAY               10000 //10 seconds
