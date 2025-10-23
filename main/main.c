@@ -18,18 +18,11 @@ void print_firmware_version(void)
     ESP_LOGI(TAG, "========================================");
 }
 
-/*
-change iot_bridge gpio dependency
-idf_component_register(SRCS "${srcs}"
-                       INCLUDE_DIRS "${include_dirs}"
-                       REQUIRES "${requires}"
-                       PRIV_REQUIRES esp_driver_gpio)                   
-*/
-
 void app_main(void)
 {
     //! Default (for simulation avoiding I2C scan)
-    UNIT_ROLE = RX;
+    //UNIT_ROLE = TX;
+    //internalFWTEST = true;
 
     print_firmware_version();
 
@@ -50,17 +43,19 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_master_init());
     
     /* I2C scan to detect TX or RX */
-    /*
-    i2c_scan_bus();
-    if (i2c_device_present(T1_SENSOR_ADDR) || i2c_device_present(T2_SENSOR_ADDR)) {
-        UNIT_ROLE = RX;
-        ESP_LOGI(TAG, "RX unit detected via I2C scan");
+    if (!internalFWTEST)
+    {
+        i2c_scan_bus();
+        if (i2c_device_present(T1_SENSOR_ADDR) || i2c_device_present(T2_SENSOR_ADDR)) {
+            UNIT_ROLE = RX;
+            ESP_LOGI(TAG, "RX unit detected via I2C scan");
+        }
+        else {
+            UNIT_ROLE = TX;
+            ESP_LOGI(TAG, "TX unit detected via I2C scan");
+        }
     }
-    else {
-        UNIT_ROLE = TX;
-        ESP_LOGI(TAG, "TX unit detected via I2C scan");
-    }
-    */
+    
 
     //Create group event 
     eventGroupHandle = xEventGroupCreate();

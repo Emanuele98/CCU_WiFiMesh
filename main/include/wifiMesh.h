@@ -24,7 +24,7 @@
 /* ESP-NOW*/
 #define ESPNOW_QUEUE_MAXDELAY               10000 //10 seconds
 #define MAX_COMMS_ERROR                     10
-#define ESPNOW_QUEUE_SIZE                   20
+#define ESPNOW_QUEUE_SIZE                   5
 
 /* ESP-NOW message type */
 typedef enum {

@@ -4,6 +4,8 @@ static const char *TAG = "UTIL";
 
 bool is_root_node = false;
 
+bool internalFWTEST = false;
+
 time_t now;
 
 time_t reconnection_time = 0;

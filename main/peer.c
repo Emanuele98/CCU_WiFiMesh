@@ -189,7 +189,7 @@ struct RX_peer* RX_peer_find_by_mac(uint8_t *mac)
     WITH_RX_PEERS_LOCKED {
         struct RX_peer *p;
         SLIST_FOREACH(p, &RX_peers, next) {
-            if (memcmp(p->MACaddress, mac, 6) == 0) {
+            if (memcmp(p->MACaddress, mac, ETH_HWADDR_LEN) == 0) {
                 result = p;
                 break;
             }
@@ -233,7 +233,7 @@ struct RX_peer* RX_peer_find_by_position(int8_t position)
     return result;
 }
 
-void removeRelativeRX(int8_t pos)
+void removeFromRelativeTX(int8_t pos)
 {
     // Atomic: Find and remove in one critical section
     WITH_TX_PEERS_LOCKED {
@@ -245,8 +245,9 @@ void removeRelativeRX(int8_t pos)
                 p->dynamic_payload->RX.rx_status = RX_NOT_PRESENT;
                 p->dynamic_payload->RX.id = 0;
                 p->dynamic_payload->RX.current = p->dynamic_payload->RX.voltage = p->dynamic_payload->RX.temp1 = p->dynamic_payload->RX.temp2 = 0;
-                
-                //todo switch off!
+                p->dynamic_payload->TX.tx_status = TX_OFF;
+
+                //todo switch off! also - remove from espNOW how?
                 break;
             }
         }
@@ -271,11 +272,13 @@ void peer_delete(uint8_t *mac)
     // Atomic: Find and remove in one critical section
     WITH_TX_PEERS_LOCKED {
         struct TX_peer *p;
-        SLIST_FOREACH(p, &TX_peers, next) {
-            if (memcmp(p->MACaddress, mac, 6) == 0) {
-                SLIST_REMOVE(&TX_peers, p, TX_peer, next);
-                TX_p = p;  // Store for freeing outside lock
-                break;
+        if (!SLIST_EMPTY(&TX_peers)) {
+            SLIST_FOREACH(p, &TX_peers, next) {
+                if (memcmp(p->MACaddress, mac, ETH_HWADDR_LEN) == 0) {
+                    SLIST_REMOVE(&TX_peers, p, TX_peer, next);
+                    TX_p = p;  // Store for freeing outside lock
+                    break;
+                }
             }
         }
     }
@@ -313,13 +316,15 @@ void peer_delete(uint8_t *mac)
     
     WITH_RX_PEERS_LOCKED {
         struct RX_peer *p;
-        SLIST_FOREACH(p, &RX_peers, next) {
-            if (memcmp(p->MACaddress, mac, 6) == 0) {
-                //remove from relative TX (if any)
-                removeRelativeRX(p->id);
-                SLIST_REMOVE(&RX_peers, p, RX_peer, next);
-                RX_p = p;
-                break;
+            if (!SLIST_EMPTY(&RX_peers)) {
+            SLIST_FOREACH(p, &RX_peers, next) {
+                if (memcmp(p->MACaddress, mac, ETH_HWADDR_LEN) == 0) {
+                    //remove from relative TX (if any)
+                    removeFromRelativeTX(p->id);
+                    SLIST_REMOVE(&RX_peers, p, RX_peer, next);
+                    RX_p = p;
+                    break;
+                }
             }
         }
     }
@@ -483,7 +488,7 @@ struct TX_peer* TX_peer_add(uint8_t *mac, uint8_t id)
     WITH_TX_PEERS_LOCKED {
         // Double-check peer doesn't exist (defensive)
         SLIST_FOREACH(existing, &TX_peers, next) {
-            if (memcmp(existing->MACaddress, mac, 6) == 0) {
+            if (memcmp(existing->MACaddress, mac, ETH_HWADDR_LEN) == 0) {
                 // Race condition - another thread added it
                 ESP_LOGW(TAG, "Peer was added by another thread, cleaning up");
                 // Clean up our allocation (outside macro to avoid issues)
@@ -659,7 +664,7 @@ void update_status(struct TX_peer *peer)
         peer->dynamic_payload->TX.tx_status = TX_ALERT;
     else if (peer->dynamic_payload->TX.tx_status == TX_LOCALIZATION)
         peer->dynamic_payload->TX.tx_status = TX_LOCALIZATION;
-    else if (peer->dynamic_payload->RX.id != 0)
+    else if (peer->dynamic_payload->RX.macAddr[0] != 0)
         peer->dynamic_payload->TX.tx_status = TX_DEPLOY;
     else
         peer->dynamic_payload->TX.tx_status = TX_OFF;

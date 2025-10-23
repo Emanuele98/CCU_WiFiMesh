@@ -232,70 +232,72 @@ esp_err_t write_STM_limits()
 
 esp_err_t write_STM_command(TX_status command)
 {
-    /*
-    //create json file
-    cJSON *root = cJSON_CreateObject();
-    if (command == TX_DEPLOY)
+    if (!internalFWTEST)
     {
-        cJSON_AddStringToObject(root, "mode", "deploy");
-        self_dynamic_payload.TX.tx_status = TX_DEPLOY;
-        strip_misalignment = strip_enable = false;
-        strip_charging = true;
-        //ESP_LOGW(TAG, "DEPLOY");
-    }
-    else if (command == TX_LOCALIZATION)
-    {
-        cJSON_AddStringToObject(root, "mode", "localization");
-        self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
-        //ESP_LOGW(TAG, "LOC");
-    }
-    else if (command == TX_OFF)
-    {
-        cJSON_AddStringToObject(root, "mode", "off");
-        self_dynamic_payload.TX.tx_status = TX_OFF;
-        strip_misalignment = strip_charging = false;
-        strip_enable = true;
-        //ESP_LOGW(TAG, "OFF");
-    }
+        //create json file
+        cJSON *root = cJSON_CreateObject();
+        if (command == TX_DEPLOY)
+        {
+            cJSON_AddStringToObject(root, "mode", "deploy");
+            self_dynamic_payload.TX.tx_status = TX_DEPLOY;
+            strip_misalignment = strip_enable = false;
+            strip_charging = true;
+            //ESP_LOGW(TAG, "DEPLOY");
+        }
+        else if (command == TX_LOCALIZATION)
+        {
+            cJSON_AddStringToObject(root, "mode", "localization");
+            self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
+            //ESP_LOGW(TAG, "LOC");
+        }
+        else if (command == TX_OFF)
+        {
+            cJSON_AddStringToObject(root, "mode", "off");
+            self_dynamic_payload.TX.tx_status = TX_OFF;
+            strip_misalignment = strip_charging = false;
+            strip_enable = true;
+            //ESP_LOGW(TAG, "OFF");
+        }
 
-    char *my_json_string = cJSON_Print(root);
-    const uint8_t len = strlen(my_json_string);
+        char *my_json_string = cJSON_Print(root);
+        const uint8_t len = strlen(my_json_string);
 
-    const uint8_t txBytes = uart_write_bytes(EX_UART_NUM, my_json_string, len);
+        const uint8_t txBytes = uart_write_bytes(EX_UART_NUM, my_json_string, len);
 
-    cJSON_Delete(root);
-    free(my_json_string);
-    
-    if (txBytes > 0)
-        return ESP_OK;
+        cJSON_Delete(root);
+        free(my_json_string);
+        
+        if (txBytes > 0)
+            return ESP_OK;
+        else
+            return ESP_FAIL;
+    }
     else
-        return ESP_FAIL;
-
-    */
-
-    //Simulate POWER
-    if (command == TX_DEPLOY)
     {
-        gpio_set_level(GPIO_OUTPUT_PIN, 1);
-        self_dynamic_payload.TX.tx_status = TX_DEPLOY;
-        ESP_LOGW(TAG, "DEPLOY");
-    }
-    else if (command == TX_OFF)
-    {
-        //ESP_LOGW(TAG, "OFF");
-        gpio_set_level(GPIO_OUTPUT_PIN, 0);
-        self_dynamic_payload.TX.tx_status = TX_OFF;
-        ESP_LOGW(TAG, "OFF");
-    }
-    else if (command == TX_LOCALIZATION)
-    {
-        //ESP_LOGW(TAG, "ON");
-        gpio_set_level(GPIO_OUTPUT_PIN, 1); //no localization mode for now
-        self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
-        ESP_LOGW(TAG, "LOC");
-    }
+        //Simulate POWER
+        if (command == TX_DEPLOY)
+        {
+            gpio_set_level(GPIO_OUTPUT_PIN, 1);
+            self_dynamic_payload.TX.tx_status = TX_DEPLOY;
+            ESP_LOGW(TAG, "DEPLOY");
+        }
+        else if (command == TX_OFF)
+        {
+            //ESP_LOGW(TAG, "OFF");
+            gpio_set_level(GPIO_OUTPUT_PIN, 0);
+            self_dynamic_payload.TX.tx_status = TX_OFF;
+            ESP_LOGW(TAG, "OFF");
+        }
+        else if (command == TX_LOCALIZATION)
+        {
+            //ESP_LOGW(TAG, "ON");
+            gpio_set_level(GPIO_OUTPUT_PIN, 1); //no localization mode for now
+            self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
+            ESP_LOGW(TAG, "LOC");
+        }
 
-    return ESP_OK;
+        return ESP_OK;
+    }
 }
 
 void uart_init(void) {
@@ -353,8 +355,11 @@ void TX_init_hw()
     ESP_ERROR_CHECK(write_STM_command(TX_OFF));
     ESP_ERROR_CHECK(write_STM_limits());
 
-    /** Simulate POWER */
-    // Reset and set GPIO as output
-    gpio_reset_pin(GPIO_OUTPUT_PIN);
-    gpio_set_direction(GPIO_OUTPUT_PIN, GPIO_MODE_INPUT_OUTPUT);
+    if (internalFWTEST)
+    {
+        /** Simulate POWER */
+        // Reset and set GPIO as output
+        gpio_reset_pin(GPIO_OUTPUT_PIN);
+        gpio_set_direction(GPIO_OUTPUT_PIN, GPIO_MODE_INPUT_OUTPUT);
+    }
 }

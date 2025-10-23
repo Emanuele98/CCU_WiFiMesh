@@ -275,7 +275,7 @@ void RX_init_hw(void)
         return;
     }
     
-    err = xTaskCreate(get_adc, "get_adc", 8192, NULL, 5, NULL);  // Priority 5 is fine
+    err = xTaskCreate(get_adc, "get_adc", 8192, NULL, 8, NULL); //todo - higher priority for voltage check? 
     if( err != pdPASS )
     {
         ESP_LOGE(TAG, "Task get_adc was not created successfully");
