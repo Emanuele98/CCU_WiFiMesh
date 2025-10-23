@@ -1150,8 +1150,8 @@ static void wifi_init(void)
     // Station config (yes router connection)
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = "Degani",//CONFIG_MESH_ROUTER_SSID,
-            .password = "Degani1965",//CONFIG_MESH_ROUTER_PASSWD,
+            .ssid = CONFIG_MESH_ROUTER_SSID, 
+            .password = CONFIG_MESH_ROUTER_PASSWD,
         },
     };
     
