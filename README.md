@@ -1,9 +1,7 @@
 # 🐝 Bumblebee WiFi Mesh Lite - Wireless Charging Network
 
-[![Version](https://img.shields.io/badge/version-v0.1.0--alpha-yellow)](https://github.com/yourusername/bumblebee-mesh)
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.5.1-green)](https://docs.espressif.com/projects/esp-idf/en/latest/)
 [![Platform](https://img.shields.io/badge/platform-ESP32--C6-blue)](https://www.espressif.com/en/products/socs/esp32-c6)
-[![License](https://img.shields.io/badge/license-MIT-lightgray)](LICENSE)
 
 ## 🎯 Overview
 
@@ -24,7 +22,7 @@ Bumblebee is a distributed wireless charging network firmware that enables intel
 
 | Protocol | Use Case | Throughput | Latency | Packet Loss |
 |----------|----------|------------|---------|-------------|
-| **WiFi Mesh-Lite** | TX↔TX Communication | 13+ Mbps | 3-5 ms | <1% |
+| **WiFi Mesh-Lite** | TX↔TX Communication | 13+ Mbps | 3-5 ms | <0% |
 | **ESP-NOW** | TX↔RX Low Latency | 40 Kbps | 7 ms | 0% |
 | **Native TCP** | Alternative | 224 Kbps | 3.7 ms | 0% |
 
