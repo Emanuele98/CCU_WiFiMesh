@@ -109,18 +109,24 @@ Edge cases and real-world scenarios need validation before production deployment
               │    (TX1)       │      (Automatic election)
               └───┬────────┬───┘
                   │        │
-        Mesh-Lite │        │ Mesh-Lite
-                  │        │
-         ┌────────▼──┐  ┌──▼────────┐
-         │  TX2      │  │  TX3      │
-         └────┬──────┘  └──────┬────┘
-              │                │  
-       ESP-NOW│                │ESP-NOW  
-         (<10ms)              (<10ms)
-              │                │  
-         ┌────▼──────┐  ┌──────▼────┐
-         │   RX1     │  │    RX2    │
-         └───────────┘  └───────────┘
+        Mesh-Lite │        │ ESP-NOW
+                  │        │ (<10ms)
+                  │   ┌────▼────┐
+                  │   │   RX1   │ ◄─── ROOT's own RX
+                  │   └─────────┘
+                  │
+         ┌────────▼──────────┐
+         │                   │
+    ┌────▼────┐         ┌────▼────┐
+    │   TX2   │         │   TX3   │
+    └────┬────┘         └────┬────┘
+         │                   │  
+  ESP-NOW│                   │ESP-NOW  
+   (<10ms)                   │(<10ms)
+         │                   │  
+    ┌────▼────┐         ┌────▼────┐
+    │   RX2   │         │   RX3   │
+    └─────────┘         └─────────┘
 ```
 
 ### Communication Protocols

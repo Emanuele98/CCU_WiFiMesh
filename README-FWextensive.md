@@ -88,32 +88,39 @@ I (XXX) wifiMesh: Root node: YES/NO
 
 Bumblebee implements a **WiFi Mesh-Lite network** with **ESP-NOW** for low-latency peer-to-peer communication, designed for wireless charging station monitoring and control.
 
+### System Overview
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Internet / Cloud                          │
+│                    Cloud Dashboard (MQTT)                    │
 └─────────────────────┬───────────────────────────────────────┘
                       │
               ┌───────▼────────┐
               │  WiFi Router   │
               └───────┬────────┘
-                      │ WiFi (MQTT)
+                      │
               ┌───────▼────────┐
-              │  MASTER/ROOT   │ ◄─── Any TX unit can be ROOT
-              │    (TX1)       │      (Dynamic allocation)
+              │  ROOT/MASTER   │ ◄─── Any TX can be root
+              │    (TX1)       │      (Automatic election)
               └───┬────────┬───┘
                   │        │
-        WiFi-Mesh │        │ WiFi-Mesh
-         (Layer1) │        │ (Layer2+)
-                  │        │
-         ┌────────▼──┐  ┌──▼────────┐
-         │  TX2      │  │  TX3      │
-         └────┬──────┘  └──────┬────┘
-              │                │  
-       ESP-NOW|                │ESP-NOW  
-              │                │  
-         ┌────▼──────┐  ┌──────▼────┐
-         │   RX1     │  │    RX2    │
-         └───────────┘  └───────────┘
+        Mesh-Lite │        │ ESP-NOW
+                  │        │ (<10ms)
+                  │   ┌────▼────┐
+                  │   │   RX1   │ ◄─── ROOT's own RX
+                  │   └─────────┘
+                  │
+         ┌────────▼──────────┐
+         │                   │
+    ┌────▼────┐         ┌────▼────┐
+    │   TX2   │         │   TX3   │
+    └────┬────┘         └────┬────┘
+         │                   │  
+  ESP-NOW│                   │ESP-NOW  
+   (<10ms)                   │(<10ms)
+         │                   │  
+    ┌────▼────┐         ┌────▼────┐
+    │   RX2   │         │   RX3   │
+    └─────────┘         └─────────┘
 ```
 
 ### Key Components
@@ -123,7 +130,7 @@ Bumblebee implements a **WiFi Mesh-Lite network** with **ESP-NOW** for low-laten
 | Type | Role | Capabilities |
 |------|------|-------------|
 | **TX** | Transmitter / Charging Pad | - Sensor monitoring (V, I, T)<br>- WiFi Mesh participant<br>- ESP-NOW sender/receiver<br>- Can become MASTER<br>- MQTT publishing (if MASTER) |
-| **RX** | Receiver / Scooter Unit | - Sensor monitoring (V, I, T)<br>- ESP-NOW sender only<br>- Sporadic mesh participation<br>- Battery charging status |
+| **RX** | Receiver / Scooter Unit | - Sensor monitoring (V, I, T)<br>- ESP-NOW sender only<br>- Also mesh beacons <br>- Battery charging status |
 | **MASTER** | Root Node | - TX unit elected as root<br>- MQTT broker connection<br>- Data aggregation<br>- Control distribution |
 
 #### 2. **Communication Layers**
