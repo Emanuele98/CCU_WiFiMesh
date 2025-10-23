@@ -7,7 +7,6 @@ static const char *TAG = "wifiMesh";
 
 // Network status
 static bool is_mesh_connected = false;
-static bool is_root_node = false;
 static int mesh_level = -1;
 
 // Send semaphore to avoid concurrent access to RF resources
@@ -168,7 +167,7 @@ static esp_err_t dynamic_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     if (p != NULL)
     {
         *p->dynamic_payload = *received_payload;
-        ESP_LOGI(TAG, "TX Peer ID %d dynamic payload updated", p->id);
+        //ESP_LOGI(TAG, "TX Peer ID %d dynamic payload updated", p->id);
         // show data
         
         /*ESP_LOGI(TAG, "TX: Voltage: %.2f V, Current: %.2f A, Temp1: %.2f C, Temp2: %.2f C \n\
@@ -217,7 +216,7 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     if (p != NULL)
     {
         *p->alert_payload = *received_payload;
-        ESP_LOGI(TAG, "TX Peer ID %d alert payload received - tx %d rx %d", p->id, p->alert_payload->TX.TX_all_flags, p->alert_payload->RX.RX_all_flags);
+        //ESP_LOGI(TAG, "TX Peer ID %d alert payload received - tx %d rx %d", p->id, p->alert_payload->TX.TX_all_flags, p->alert_payload->RX.RX_all_flags);
         // show data
         //ESP_LOGI(TAG, "TX: OV %d, OC %d, OT %d, FOD %d \n RX: OV: %d, OC %d, OT %d FC %d",
         //    p->alert_payload->TX.TX_internal.overvoltage, p->alert_payload->TX.TX_internal.overcurrent, p->alert_payload->TX.TX_internal.overtemperature, p->alert_payload->TX.TX_internal.FOD,
@@ -471,6 +470,15 @@ static void send_static_payload(void)
 /* Parse received ESPNOW data. */
 static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
 {
+    //Peer ID
+    struct RX_peer* p = RX_peer_find_by_mac(mac);
+    if (p != NULL)
+        self_dynamic_payload.RX.id = p->id;
+    else
+        ESP_LOGE(TAG, "RX peer not found in the list upon dynamic espNOW msg");
+
+    ESP_LOGI(TAG, "Handle peer dynamic %d", self_dynamic_payload.RX.id);
+
     //todo: disconnect when scooter leaves
     
     //populate mesh lite dynamic payload
@@ -496,17 +504,19 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
         strip_charging = strip_enable = false;
         strip_misalignment = true;
     }
-
-    //Peer ID
-    struct RX_peer* p = RX_peer_find_by_mac(mac);
-    if (p != NULL)
-        self_dynamic_payload.RX.id = p->id;
-    else
-        ESP_LOGE(TAG, "RX peer not found in the list upon dynamic espNOW msg");
 }
 
 static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
 {
+    //Peer ID
+    struct RX_peer* p = RX_peer_find_by_mac(mac);
+    if (p != NULL)
+        self_alert_payload.RX.id = p->id;
+    else
+        ESP_LOGE(TAG, "RX peer not found in the list upon alert espNOW msg");
+    
+    ESP_LOGI(TAG, "Handle peer alert %d", self_alert_payload.RX.id);
+
     //switch off locally
     write_STM_command(TX_OFF);
 
@@ -523,13 +533,6 @@ static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
     }
     else    
         self_dynamic_payload.RX.rx_status = RX_CHARGING;
-
-    //Peer ID
-    struct RX_peer* p = RX_peer_find_by_mac(mac);
-    if (p != NULL)
-        self_alert_payload.RX.id = p->id;
-    else
-        ESP_LOGE(TAG, "RX peer not found in the list upon alert espNOW msg");
 
     //reconnection timeout
 }
@@ -819,14 +822,14 @@ static void espnow_task(void *pvParameter)
                             //Case 3 - I am TX - am I active? yes then tell master - no then discard
                             else if (self_dynamic_payload.TX.tx_status == TX_LOCALIZATION)
                             {
-                                ESP_LOGI(TAG, "RX has been located to this pad!");
+                                ESP_LOGI(TAG, "RX has been located on this pad!");
                                 write_STM_command(TX_DEPLOY);
                                 // Save peer and communicate via ESP-NOW
                                 add_peer_if_needed(recv_cb->mac_addr);
                                 // ask for dynamic data 
                                 espnow_send_message(DATA_ASK_DYNAMIC, recv_cb->mac_addr);
                                 //Advise master TO update peer position
-                                send_localization_payload(CONFIG_UNIT_ID, recv_cb->mac_addr);
+                                send_localization_payload(CONFIG_UNIT_ID, recv_cb->mac_addr); //? // TODO PROBLEMS HERE
                             }
                         }   
                     }
@@ -842,12 +845,12 @@ static void espnow_task(void *pvParameter)
                     }
                     else if(msg_type == DATA_DYNAMIC)
                     {
-                        ESP_LOGI(TAG, "Receive DYNAMIC data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+                        //ESP_LOGI(TAG, "Receive DYNAMIC data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
                         handle_peer_dynamic(recv_data, recv_cb->mac_addr);
                     }
                     else if (msg_type == DATA_ALERT)
                     {
-                        ESP_LOGI(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+                        //ESP_LOGI(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
                         handle_peer_alert(recv_data, recv_cb->mac_addr); 
                     }
                     else
@@ -940,7 +943,7 @@ static void alert_task(void *pvParameters)
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(5)); //minimum wait
+        vTaskDelay(pdMS_TO_TICKS(10)); //minimum wait
     }
 }
 
@@ -988,7 +991,6 @@ static void wifi_mesh_lite_task(void *pvParameters)
                         send_dynamic_payload();
                         self_previous_dynamic_payload = self_dynamic_payload;
                         lastDynamic = xTaskGetTickCount();
-                        vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
                     }
                 }
                 else
@@ -998,6 +1000,7 @@ static void wifi_mesh_lite_task(void *pvParameters)
                         //espnow broadcast when voltage rises
                         xEventGroupWaitBits(eventGroupHandle, LOCALIZEDBIT, pdTRUE, pdFALSE, portMAX_DELAY);
                         espnow_send_message(DATA_BROADCAST, broadcast_mac);
+                        continue;
                     }
                     else
                     {
@@ -1008,13 +1011,12 @@ static void wifi_mesh_lite_task(void *pvParameters)
                             espnow_send_message(DATA_DYNAMIC, TX_parent_mac);
                             self_previous_dynamic_payload = self_dynamic_payload;
                             lastDynamic = xTaskGetTickCount();
-                            vTaskDelay(pdMS_TO_TICKS(100)); //min interval to avoid flooding
                         }
                     }
                 }
             } 
         }
-        vTaskDelay(pdMS_TO_TICKS(10)); // Delay for 10ms
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 
     vTaskDelete(NULL);
@@ -1051,6 +1053,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_JOIN>");
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             is_mesh_connected = true;
+            xEventGroupSetBits(eventGroupHandle, MESH_FORMEDBIT);
             if (!is_root_node && (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) == 0)) {
                 send_static_payload();
             }
@@ -1143,8 +1146,8 @@ static void wifi_init(void)
     // Station config (yes router connection)
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = CONFIG_MESH_ROUTER_SSID,
-            .password = CONFIG_MESH_ROUTER_PASSWD,
+            .ssid = "Degani",//CONFIG_MESH_ROUTER_SSID,
+            .password = "Degani1965",//CONFIG_MESH_ROUTER_PASSWD,
         },
     };
     
@@ -1240,7 +1243,7 @@ void wifi_mesh_init()
     }
 
     // Create ESPNOW task
-    ESP_ERROR_CHECK(xTaskCreate(espnow_task, "espnow_task", 4096, NULL, 10, NULL));
+    ESP_ERROR_CHECK(xTaskCreate(espnow_task, "espnow_task", 4096, NULL, 12, NULL));
 
     // Create alert high priority task
     ESP_ERROR_CHECK(xTaskCreate(alert_task, "alert_task", 4096, NULL, 11, NULL));

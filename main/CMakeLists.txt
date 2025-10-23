@@ -1,4 +1,4 @@
-idf_component_register(SRCS "mqtt_client_manager.c" "main.c" "wifiMesh.c" "mqtt_client_manager.c" "peer.c" "cru_hw.c" "aux_ctu_hw.c" "leds.c" "util.c"
+idf_component_register(SRC_DIRS "."
                     INCLUDE_DIRS "." "include")
 
 # Build version string from Kconfig

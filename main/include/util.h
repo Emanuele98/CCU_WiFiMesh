@@ -38,7 +38,7 @@
 
 /* MISALIGNMENT LIMITS */
 #define SCOOTER_LEFT_LIMIT                  10
-#define MISALIGNED_LIMIT                    30
+#define MISALIGNED_LIMIT                    10//30
 
 /* ALERTS LIMITS TX */
 #define OVERCURRENT_TX                      2.2
@@ -47,10 +47,10 @@
 #define FOD_ACTIVE                          1
 
 /* ALERTS LIMITS RX */
-#define OVERCURRENT_RX                      2
-#define OVERVOLTAGE_RX                      100
+#define OVERCURRENT_RX                      5//2
+#define OVERVOLTAGE_RX                      150//100
 #define OVERTEMPERATURE_RX                  60
-#define MIN_RX_VOLTAGE                      60
+#define MIN_RX_VOLTAGE                      40//60
 
 /* LOC TIMING */
 #define REACTION_TIME                       1000    //milliseconds
@@ -99,6 +99,7 @@
 #define MESH_FORMEDBIT                      BIT0
 #define LOCALIZEDBIT                        BIT1
 
+extern bool is_root_node;
 
 //* Global Alerts variables
 extern float OVER_CURRENT;

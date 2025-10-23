@@ -6,11 +6,11 @@
 #include "mqtt_client.h"
 
 /* MQTT broker URI */
-#define MQTT_BROKER_URI "mqtt://15.188.29.195:1883"
+#define MQTT_BROKER_URI                 "mqtt://15.188.29.195:1883"
 
 /* Publishing intervals */
-#define MQTT_MIN_PUBLISH_INTERVAL_MS 30000                      // 30s
-#define MQTT_RECONNECT_INTERVAL_MS 20000                        // 20s
+#define MQTT_MIN_PUBLISH_INTERVAL_MS    30000                // 30s
+#define MQTT_RECONNECT_INTERVAL_MS      10000                // 20s
 
 /**
  * @brief Initialize MQTT client and start publishing task (root node only)

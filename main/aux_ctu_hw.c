@@ -232,6 +232,7 @@ esp_err_t write_STM_limits()
 
 esp_err_t write_STM_command(TX_status command)
 {
+    /*
     //create json file
     cJSON *root = cJSON_CreateObject();
     if (command == TX_DEPLOY)
@@ -270,29 +271,31 @@ esp_err_t write_STM_command(TX_status command)
     else
         return ESP_FAIL;
 
-    /*
+    */
+
     //Simulate POWER
     if (command == TX_DEPLOY)
     {
         gpio_set_level(GPIO_OUTPUT_PIN, 1);
         self_dynamic_payload.TX.tx_status = TX_DEPLOY;
+        ESP_LOGW(TAG, "DEPLOY");
     }
     else if (command == TX_OFF)
     {
         //ESP_LOGW(TAG, "OFF");
         gpio_set_level(GPIO_OUTPUT_PIN, 0);
         self_dynamic_payload.TX.tx_status = TX_OFF;
+        ESP_LOGW(TAG, "OFF");
     }
     else if (command == TX_LOCALIZATION)
     {
         //ESP_LOGW(TAG, "ON");
         gpio_set_level(GPIO_OUTPUT_PIN, 1); //no localization mode for now
         self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
+        ESP_LOGW(TAG, "LOC");
     }
 
     return ESP_OK;
-    */
-    
 }
 
 void uart_init(void) {
@@ -352,6 +355,6 @@ void TX_init_hw()
 
     /** Simulate POWER */
     // Reset and set GPIO as output
-    //gpio_reset_pin(GPIO_OUTPUT_PIN);
-    //gpio_set_direction(GPIO_OUTPUT_PIN, GPIO_MODE_INPUT_OUTPUT);
+    gpio_reset_pin(GPIO_OUTPUT_PIN);
+    gpio_set_direction(GPIO_OUTPUT_PIN, GPIO_MODE_INPUT_OUTPUT);
 }

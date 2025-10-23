@@ -1,0 +1,19 @@
+{
+    "idf.espIdfPath": "C:\\Users\\degan\\esp\\v5.5.1\\esp-idf",
+    "idf.toolsPath": "C:\\Users\\degan\\.espressif",
+    "idf.pythonBinPath": "C:\\Users\\degan\\.espressif\\python_env\\idf5.5_py3.11_env\\Scripts\\python.exe",
+    "idf.customExtraPaths": "${env:PATH};C:\\Users\\degan\\.espressif\\tools\\riscv32-esp-elf\\esp-14.2.0_20241119\\riscv32-esp-elf\\bin;C:\\Users\\degan\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin;C:\\Users\\degan\\.espressif\\tools\\cmake\\3.29.0\\bin;C:\\Users\\degan\\.espressif\\tools\\ninja\\1.12.1",
+    "idf.port": "COM3",
+    "idf.enableIdfComponentManager": true,
+    "idf.adapterTargetName": "esp32c6",
+    "idf.openOcdConfigs": [
+        "board/esp32c6-builtin.cfg"
+    ],
+    "C_Cpp.intelliSenseEngine": "default",
+    "files.associations": {
+        "sdkconfig": "kconfig",
+        "sdkconfig.*": "kconfig"
+    },
+    "idf.portWin": "COM14",
+    "idf.flashType": "UART"
+}

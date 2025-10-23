@@ -274,7 +274,7 @@ static void mqtt_publish_task(void *pvParameters)
     
     while (1)
     {
-        if (mqtt_connected)
+        if (mqtt_connected & is_root_node)
         {
             // Iterate through all TX peers
             struct TX_peer *tx_peer;
@@ -286,9 +286,10 @@ static void mqtt_publish_task(void *pvParameters)
                 }
             }
         }
-        
+        //todo diconnect other nodes if root changes
+
         // Check every 1 second
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
     
     vTaskDelete(NULL);
@@ -366,13 +367,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 
 esp_err_t mqtt_client_manager_init(void)
 {
-    ESP_LOGI(TAG, "Initializing MQTT client manager");
+    //ESP_LOGI(TAG, "Initializing MQTT client manager");
     
     // Configure MQTT client
     const esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = MQTT_BROKER_URI,
         .network.reconnect_timeout_ms = MQTT_RECONNECT_INTERVAL_MS,
-        .network.timeout_ms = 10000,
+        .network.timeout_ms = 30000,
         .buffer.size = 4096,        // Increased for JSON
         .buffer.out_size = 4096,    // Increased for JSON
     };

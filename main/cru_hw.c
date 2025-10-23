@@ -38,20 +38,51 @@ static void init_adc(void)
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, channel[0], &config_ch0));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, channel[1], &config_ch1));
 
-    // Calibration setup (unchanged)
+    // ============ MULTI-TARGET CALIBRATION ============
+    
+#if CONFIG_IDF_TARGET_ESP32
+    // ESP32 uses LINE FITTING (2-point calibration)
+    //ESP_LOGI(TAG, "Calibration: ESP32 Line Fitting");
+    
+    adc_cali_line_fitting_config_t cali_config_1 = {
+        .unit_id = ADC_UNIT,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    adc_cali_line_fitting_config_t cali_config_2 = {
+        .unit_id = ADC_UNIT,
+        .atten = ADC_ATTEN_DB_6,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    
+    ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_config_1, &adc_cali_handle_1));
+    ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_config_2, &adc_cali_handle_2));
+    
+#elif CONFIG_IDF_TARGET_ESP32C6
+    // ESP32-C6 uses CURVE FITTING (eFuse-based, channel-specific)
+    //ESP_LOGI(TAG, "Calibration: ESP32-C6 Curve Fitting");
+    
     adc_cali_curve_fitting_config_t cali_config_1 = {
         .unit_id = ADC_UNIT,
+        .chan = channel[0],  // Note: C6 requires channel specification
         .atten = ADC_ATTEN_DB_12,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
     adc_cali_curve_fitting_config_t cali_config_2 = {
         .unit_id = ADC_UNIT,
+        .chan = channel[1],  // Note: C6 requires channel specification
         .atten = ADC_ATTEN_DB_6,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
     
     ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config_1, &adc_cali_handle_1));
     ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config_2, &adc_cali_handle_2));
+    
+#else
+    #error "Unsupported ESP target for ADC calibration"
+#endif
+
+    //ESP_LOGI(TAG, "ADC calibration complete");
 }
 
 static float i2c_read_temperature_sensor(bool n_temp_sens)
@@ -128,7 +159,7 @@ static void get_adc(void *pvParameters)
             ch3_sum += ch3_raw;
             
             // Average every 50 samples
-            if (read_success >= 10) {
+            if (read_success >= 1) {
                 int ch2_avg = ch2_sum / read_success;
                 int ch3_avg = ch3_sum / read_success;
                 
@@ -142,8 +173,8 @@ static void get_adc(void *pvParameters)
                     self_dynamic_payload.RX.current = (float)(ch3_voltage_mv > 450 ? (ch3_voltage_mv - 400)/360.00 : 0);
                     
                     //ESP_LOGI(TAG, "Ch2: %.3fV --> Voltage: %.3f, Ch3: %.3fV --> Current: %.3f", 
-                    //   ch2_voltage_mv/1000.0f, self_dynamic_payload.voltage, 
-                    //    ch3_voltage_mv/1000.0f, self_dynamic_payload.current);
+                    //   ch2_voltage_mv/1000.0f, self_dynamic_payload.RX.voltage, 
+                    //   ch3_voltage_mv/1000.0f, self_dynamic_payload.RX.current);
                 }
 
                 if (self_dynamic_payload.RX.voltage > MIN_RX_VOLTAGE && !rxLocalized) {

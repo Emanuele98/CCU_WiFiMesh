@@ -2,13 +2,13 @@ menu "Example Configuration"
 
     config MESH_ROUTER_SSID
         string "Router SSID"
-        default "ROUTER_SSID"
+        default "bumblebee"
         help
             Router SSID.
 
     config MESH_ROUTER_PASSWD
         string "Router password"
-        default "ROUTER_PASSWD"
+        default "cherrycookies"
         help
             Router password.
 
@@ -53,7 +53,7 @@ menu "Example Configuration"
 
     config FW_VERSION_PATCH
         int "Patch version"
-        default 1
+        default 0
         range 0 99
         help
             Patch version number (0-99)
