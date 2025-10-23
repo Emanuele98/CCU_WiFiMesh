@@ -3,6 +3,7 @@
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.5.1-green)](https://docs.espressif.com/projects/esp-idf/en/latest/)
 [![Platform](https://img.shields.io/badge/platform-ESP32--C6-blue)](https://www.espressif.com/en/products/socs/esp32-c6)
 [![Platform](https://img.shields.io/badge/platform-ESP32-blue)](https://www.espressif.com/en/products/socs/esp32)
+[![RTOS](https://img.shields.io/badge/RTOS-FreeRTOS-purple)](https://www.freertos.org/)
 
 
 ## 🎯 Overview
