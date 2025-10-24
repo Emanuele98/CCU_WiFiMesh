@@ -1,21 +1,9 @@
 {
-  "idf.espIdfPath": "C:\\Users\\degan\\esp\\v5.5.1\\esp-idf",
-  "idf.toolsPath": "C:\\Users\\degan\\.espressif",
-  "idf.pythonBinPath": "C:\\Users\\degan\\.espressif\\python_env\\idf5.5_py3.11_env\\Scripts\\python.exe",
-  "idf.customExtraPaths": "${env:PATH};C:\\Users\\degan\\.espressif\\tools\\riscv32-esp-elf\\esp-14.2.0_20241119\\riscv32-esp-elf\\bin;C:\\Users\\degan\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin;C:\\Users\\degan\\.espressif\\tools\\cmake\\3.29.0\\bin;C:\\Users\\degan\\.espressif\\tools\\ninja\\1.12.1",
-  "idf.port": "COM3",
-  "idf.enableIdfComponentManager": true,
-  "idf.adapterTargetName": "esp32c6",
+  "idf.flashType": "UART",
+  "idf.portWin": "COM16",
   "idf.openOcdConfigs": [
     "board/esp32-wrover-kit-3.3v.cfg"
   ],
-  "C_Cpp.intelliSenseEngine": "default",
-  "files.associations": {
-    "sdkconfig": "kconfig",
-    "sdkconfig.*": "kconfig"
-  },
-  "idf.portWin": "COM14",
-  "idf.flashType": "UART",
   "idf.customExtraVars": {
     "OPENOCD_SCRIPTS": "C:\\Users\\degan\\.espressif\\tools\\openocd-esp32\\v0.11.0-esp32-20211220/openocd-esp32/share/openocd/scripts",
     "IDF_CCACHE_ENABLE": "1",
@@ -25,6 +13,19 @@
   "clangd.arguments": [
     "--background-index",
     "--query-driver=C:\\Users\\degan\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32-elf-gcc.exe",
-    "--compile-commands-dir=c:\\Users\\degan\\OneDrive\\Desktop\\CCU_WiFiMesh\\build"
-  ]
+    "--compile-commands-dir=c:\\Users\\degan\\OneDrive\\Desktop\\2XBUMBLEBEE\\CCU_WiFiMesh\\build"
+  ],
+  "idf.espIdfPathWin": "C:\\Users\\degan\\esp\\v5.5.1\\esp-idf",
+  "idf.toolsPathWin": "C:\\Users\\degan\\.espressif",
+  "idf.pythonInstallPath": "C:\\Users\\degan\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
+  "files.associations": {
+    "esp_bridge.h": "c",
+    "cjson.h": "c",
+    "led_strip.h": "c",
+    "leds.h": "c",
+    "cstdint": "c",
+    "stdint.h": "c",
+    "gpio.h": "c",
+    "aux_ctu_hw.h": "c"
+  }
 }

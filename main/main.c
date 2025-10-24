@@ -69,3 +69,12 @@ void app_main(void)
     /* Initialize Hardware*/
     init_HW();
 }
+
+
+// need this on iot_bridge component
+/*
+idf_component_register(SRCS "${srcs}"
+                       INCLUDE_DIRS "${include_dirs}"
+                       REQUIRES "${requires}"
+                       PRIV_REQUIRES esp_driver_gpio)
+*/
