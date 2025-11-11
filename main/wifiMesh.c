@@ -8,6 +8,7 @@ static const char *TAG = "wifiMesh";
 // Network status
 static bool is_mesh_connected = false;
 static int mesh_level = -1;
+static bool gotIP = false;
 
 // Send semaphore to avoid concurrent access to RF resources
 static SemaphoreHandle_t send_semaphore = NULL;
@@ -485,7 +486,7 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
             self_dynamic_payload.RX.id = p->id;
     }
 
-    //ESP_LOGI(TAG, "Handle peer dynamic %d", self_dynamic_payload.RX.id);
+    ESP_LOGW(TAG, "Handle peer dynamic %d", self_dynamic_payload.RX.id);
     
     //populate mesh lite dynamic payload
     memcpy(self_dynamic_payload.RX.macAddr, mac, ETH_HWADDR_LEN);
@@ -546,6 +547,8 @@ static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
         if (p != NULL)
             self_alert_payload.RX.id = p->id;
     }
+
+    ESP_LOGW(TAG, "Handle peer alert %d", self_alert_payload.RX.id);
     
     //switch off locally
     write_STM_command(TX_OFF);
@@ -770,7 +773,7 @@ static void espnow_task(void *pvParameter)
                     }
                     else
                     {
-                        ESP_LOGW(TAG, "Unicast data sent %d!", last_msg_type);
+                        //ESP_LOGW(TAG, "Unicast data sent %d!", last_msg_type);
 
                         //unicast message
                         if (send_cb->status != ESP_NOW_SEND_SUCCESS) 
@@ -931,25 +934,23 @@ static void pass_the_baton()
 
     //ESP_LOGW(TAG, "next baton %d", p->position);
 
-    if (previousTX_pos != p->position)
-    {
-        //switch all OFF
-        reset_the_baton();
-        vTaskDelay(LOCALIZATION_TIME_MS);
+    //switch all OFF
+    reset_the_baton();
+    vTaskDelay(LOCALIZATION_TIME_MS);
 
-        //switch next ON
-        if(p->position == CONFIG_UNIT_ID)
-        {
-            //ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
-            write_STM_command(TX_LOCALIZATION);
-        }
-        else
-        {
-            //ESP_LOGI(TAG, "Next TX for localization is ID %d, switching it ON via mesh-lite", p->position);
-            send_control_payload(TX_LOCALIZATION, p->MACaddress);
-        }
-        vTaskDelay(LOCALIZATION_TIME_MS);
+    //switch next ON
+    if(p->position == CONFIG_UNIT_ID)
+    {
+        //ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
+        write_STM_command(TX_LOCALIZATION);
     }
+    else
+    {
+        //ESP_LOGI(TAG, "Next TX for localization is ID %d, switching it ON via mesh-lite", p->position);
+        send_control_payload(TX_LOCALIZATION, p->MACaddress);
+    }
+    vTaskDelay(LOCALIZATION_TIME_MS);
+    
     previousTX_pos = p->position;
 }
 
@@ -960,25 +961,31 @@ static void alert_task(void *pvParameters)
         // Check for alert
         if (alert_payload_changed(&self_alert_payload, &self_previous_alert_payload))
         {   
-            // ESP-NOW for RX -> TX parent
-            if (UNIT_ROLE == RX && rxLocalized) 
-            {
-                ESP_LOGW(TAG, "Sending CRITICAL alert via ESP-NOW");
-                espnow_send_message(DATA_ALERT, TX_parent_mac);
-                self_previous_alert_payload = self_alert_payload;
-            } 
-            else if (UNIT_ROLE == TX && !is_root_node) // Mesh-Lite for TX -> Master
-            {
-                ESP_LOGW(TAG, "Sending alert via Mesh-Lite");
-                send_alert_payload();
-                self_previous_alert_payload = self_alert_payload;
-            }
             //LEDs
             if (UNIT_ROLE == TX && (self_alert_payload.TX.TX_all_flags || self_alert_payload.RX.RX_all_flags))
             {
                 strip_charging = strip_enable = strip_misalignment = false;
                 set_strip(200, 0, 0);
                 //vTaskDelay(1000*60*2); // wait 2 minutes before clearing
+            }
+            // ESP-NOW for RX -> TX parent
+            if (UNIT_ROLE == RX && rxLocalized) 
+            {
+                ESP_LOGW(TAG, "Sending CRITICAL alert via ESP-NOW");
+                espnow_send_message(DATA_ALERT, TX_parent_mac);
+                self_previous_alert_payload = self_alert_payload;
+                esp_mesh_lite_disconnect();
+                vTaskDelay(ALERT_TIMEOUT);
+                esp_restart(); // restart after alert sent
+            } 
+            else if (UNIT_ROLE == TX && !is_root_node) // Mesh-Lite for TX -> Master
+            {
+                ESP_LOGW(TAG, "Sending alert via Mesh-Lite");
+                send_alert_payload();
+                self_previous_alert_payload = self_alert_payload;
+                esp_mesh_lite_disconnect();
+                vTaskDelay(ALERT_TIMEOUT);
+                esp_restart(); // restart after alert sent
             }
         }
 
@@ -1046,9 +1053,10 @@ static void wifi_mesh_lite_task(void *pvParameters)
                     else
                     {
                         //espnow send dynamic payload upon changes or min time
-                        if (dynamic_payload_changed(&self_dynamic_payload, &self_previous_dynamic_payload) || 
+                        if ((dynamic_payload_changed(&self_dynamic_payload, &self_previous_dynamic_payload) || 
                             ((xTaskGetTickCount() - lastDynamic) * portTICK_PERIOD_MS > DynTimeout * 1000))
-                        {           
+                            && !self_alert_payload.RX.RX_all_flags)
+                        {      
                             espnow_send_message(DATA_DYNAMIC, TX_parent_mac);
                             self_previous_dynamic_payload = self_dynamic_payload;
                             lastDynamic = xTaskGetTickCount();
@@ -1116,6 +1124,8 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             { 
                 // Initialize peer management (adding myself)
                 peer_init();
+                if (gotIP)
+                    mqtt_client_manager_init();
             }
             break;
         case ESP_MESH_LITE_EVENT_CORE_STARTED:
@@ -1136,14 +1146,16 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
         case IP_EVENT_STA_GOT_IP:
             ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
             ESP_LOGI(TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip)); 
+            gotIP = true;
             if (!is_root_node)
                 send_static_payload();
-            else
+            else 
                 mqtt_client_manager_init();
             break;
 
         case IP_EVENT_STA_LOST_IP:
             ESP_LOGW(TAG, "<IP_EVENT_STA_LOST_IP>");
+            gotIP = false;
             is_mesh_connected = false;
             is_root_node = false;
             mesh_level = -1;

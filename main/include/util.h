@@ -62,16 +62,7 @@
 #define ALERT_MESSAGE                       0x99
 
 /* RECONNECTION TIMING */
-#define TX_FOD_TIMEOUT                      60*2     //2 minutes
-#define TX_OVERTEMPERATURE_TIMEOUT          60*2     //2 minutes
-#define TX_OVERVOLTAGE_TIMEOUT              60*2     //2 minutes
-#define TX_OVERCURRENT_TIMEOUT              60*2     //2 minutes
-#define RX_OVERTEMPERATURE_TIMEOUT          60*2     //2 minutes
-#define RX_OVERVOLTAGE_TIMEOUT              60*2     //2 minutes
-#define RX_OVERCURRENT_TIMEOUT              60*2     //2 minutes
-
-/* FOD_CLEAR_TIMEOUT */
-#define FOD_CLEAR_TIMEOUT                   4000     //2 seconds
+#define ALERT_TIMEOUT                       60*1000     //1 minutes
 
 /* I2C CONFIGURATION */
 #define I2C_MASTER_SCL_IO                   19                   /*!< gpio number for I2C master clock */

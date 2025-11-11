@@ -11,7 +11,7 @@ void print_firmware_version(void)
     ESP_LOGI(TAG, "  %s", app_desc->project_name);
     ESP_LOGI(TAG, "  Firmware Version: v%d.%d.%d", 
              CONFIG_FW_VERSION_MAJOR, 
-             CONFIG_FW_VERSION_MINOR, 
+             CONFIG_FW_VERSION_MINOR,
              CONFIG_FW_VERSION_PATCH);
     ESP_LOGI(TAG, "  Build Date: %s %s", app_desc->date, app_desc->time);
     ESP_LOGI(TAG, "  ESP-IDF: %s", app_desc->idf_ver);

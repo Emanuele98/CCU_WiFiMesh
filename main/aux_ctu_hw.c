@@ -42,8 +42,6 @@ static void parse_received_UART(uint8_t *rx_uart)
         self_alert_payload.TX.TX_internal.overtemperature = 1;
     else if ((alertType == HS) || (alertType == DC))
         self_alert_payload.TX.TX_internal.FOD = 1;
-    else 
-        self_alert_payload.TX.TX_all_flags = 0;
 
     if (self_alert_payload.TX.TX_all_flags) {
         //ESP_LOGE(TAG, "ALERT: %d", alertType);

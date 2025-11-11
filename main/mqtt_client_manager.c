@@ -367,6 +367,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 
 esp_err_t mqtt_client_manager_init(void)
 {
+    if (mqtt_client_is_connected()) {
+        ESP_LOGI(TAG, "MQTT client already connected");
+        return ESP_OK;
+    }
     //ESP_LOGI(TAG, "Initializing MQTT client manager");
     
     // Configure MQTT client

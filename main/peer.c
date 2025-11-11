@@ -239,13 +239,19 @@ void removeFromRelativeTX(int8_t pos)
     WITH_TX_PEERS_LOCKED {
         struct TX_peer *p;
         SLIST_FOREACH(p, &TX_peers, next) {
-            if (p->dynamic_payload->RX.id == pos) 
+            if (p->position == pos) 
             {
+                p->alert_payload->RX.RX_all_flags = p->alert_payload->TX.TX_all_flags = 0;
+                p->alert_payload->RX.id = 0;
+                memset(p->alert_payload->RX.macAddr, 0, ETH_HWADDR_LEN);
                 memset(p->dynamic_payload->RX.macAddr, 0, ETH_HWADDR_LEN);
                 p->dynamic_payload->RX.rx_status = RX_NOT_PRESENT;
+                p->dynamic_payload->TX.tx_status = TX_OFF;
                 p->dynamic_payload->RX.id = 0;
                 p->dynamic_payload->RX.current = p->dynamic_payload->RX.voltage = p->dynamic_payload->RX.temp1 = p->dynamic_payload->RX.temp2 = 0;
-                p->dynamic_payload->TX.tx_status = TX_OFF;
+
+                strip_charging = strip_misalignment = false;
+                strip_enable = true;
 
                 //todo switch off! also - remove from espNOW how?
                 break;
@@ -320,7 +326,7 @@ void peer_delete(uint8_t *mac)
             SLIST_FOREACH(p, &RX_peers, next) {
                 if (memcmp(p->MACaddress, mac, ETH_HWADDR_LEN) == 0) {
                     //remove from relative TX (if any)
-                    removeFromRelativeTX(p->id);
+                    removeFromRelativeTX(p->position);
                     SLIST_REMOVE(&RX_peers, p, RX_peer, next);
                     RX_p = p;
                     break;
