@@ -274,7 +274,7 @@ static void mqtt_publish_task(void *pvParameters)
     
     while (1)
     {
-        if (mqtt_connected & is_root_node)
+        if (mqtt_connected && is_root_node)
         {
             // Iterate through all TX peers
             struct TX_peer *tx_peer;
@@ -349,7 +349,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                 {
                     ESP_LOGW(TAG, "Switch system OFF - Dashboard command!");
                     write_STM_command(TX_OFF);
-                    previousTX_pos = 0; //reset localization process
+                    //previousTX_pos = 0; //reset localization process
                     //todo: also send OFF to all connected pads
                 }
             }
@@ -374,6 +374,9 @@ esp_err_t mqtt_client_manager_init(void)
         .broker.address.uri = MQTT_BROKER_URI,
         .network.reconnect_timeout_ms = MQTT_RECONNECT_INTERVAL_MS,
         .network.timeout_ms = 30000,
+        .network.disable_auto_reconnect = false,
+        // Add TCP keepalive settings
+        .session.keepalive = 120,  // MQTT keepalive (seconds)
         .buffer.size = 4096,        // Increased for JSON
         .buffer.out_size = 4096,    // Increased for JSON
     };
@@ -393,7 +396,7 @@ esp_err_t mqtt_client_manager_init(void)
     
     // Create publishing task
     BaseType_t ret = xTaskCreate(mqtt_publish_task, "mqtt_publish", 
-                                 10000, NULL, 7, &mqtt_publish_task_handle);
+                                 20000, NULL, 5, &mqtt_publish_task_handle);
     
     if (ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create MQTT publish task");

@@ -158,8 +158,8 @@ static void get_adc(void *pvParameters)
             ch2_sum += ch2_raw;
             ch3_sum += ch3_raw;
             
-            // Average every 50 samples
-            if (read_success >= 1) {
+            // Average every 20 samples
+            if (read_success >= 20) {
                 int ch2_avg = ch2_sum / read_success;
                 int ch3_avg = ch3_sum / read_success;
                 

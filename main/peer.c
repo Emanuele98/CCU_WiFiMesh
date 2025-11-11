@@ -609,6 +609,10 @@ bool dynamic_payload_changed(mesh_dynamic_payload_t *current,
     if (current->TX.tx_status != previous->TX.tx_status || current->RX.rx_status != previous->RX.rx_status)
         res = true;
 
+    //avoid localization status
+    if (current->TX.tx_status == TX_LOCALIZATION)
+        res = false;
+
     return res;
 }
 

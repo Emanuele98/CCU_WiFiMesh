@@ -27,6 +27,9 @@ static mesh_control_payload_t my_control_payload;
 static uint8_t broadcast_mac[ETH_HWADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint8_t TX_parent_mac[ETH_HWADDR_LEN] = {0};
 
+// Declarations
+static void espnow_send_message(espnow_message_type mdgType, uint8_t* mac_addr);
+
 /*******************************************************
  *                Function Definitions
  *******************************************************/
@@ -327,7 +330,10 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
     if (p != NULL)
     {
         p->position = received_payload->position;
-        p->RX_status = RX_CHARGING;
+        if (p->position)
+            p->RX_status = RX_CHARGING;
+        else 
+            p->RX_status = RX_NOT_PRESENT;
         ESP_LOGI(TAG, "RX Peer ID %d localized at position %d", p->id, p->position);
         previousTX_pos = 0;
     }
@@ -480,8 +486,6 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
     }
 
     //ESP_LOGI(TAG, "Handle peer dynamic %d", self_dynamic_payload.RX.id);
-
-    //todo: disconnect when scooter leaves
     
     //populate mesh lite dynamic payload
     memcpy(self_dynamic_payload.RX.macAddr, mac, ETH_HWADDR_LEN);
@@ -505,6 +509,30 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
         self_dynamic_payload.RX.rx_status = RX_MISALIGNED;
         strip_charging = strip_enable = false;
         strip_misalignment = true;
+    } 
+    else if (self_dynamic_payload.RX.voltage < SCOOTER_LEFT_LIMIT && self_dynamic_payload.RX.rx_status != RX_NOT_PRESENT) {
+        self_dynamic_payload.RX.rx_status = RX_NOT_PRESENT;
+        strip_charging = strip_misalignment = false;
+        strip_enable = true;
+        write_STM_command(TX_OFF);
+        ESP_LOGW(TAG, "Scooter has left - switching OFF");
+        // advise master that RX has left
+        if (is_root_node)
+        {
+            struct RX_peer* p = RX_peer_find_by_mac(mac);
+            if (p != NULL)
+                p->position = 0;
+        }
+        else
+            send_localization_payload(0, mac);
+        // advise RX
+        espnow_send_message(DATA_RX_LEFT, mac);
+
+        //dynamic payload reset
+        self_dynamic_payload.RX.id = 0;
+        self_dynamic_payload.RX.rx_status = RX_NOT_PRESENT;
+        memset(self_dynamic_payload.RX.macAddr, 0, ETH_HWADDR_LEN);
+        self_dynamic_payload.RX.voltage = self_dynamic_payload.RX.current = self_dynamic_payload.RX.temp1 = self_dynamic_payload.RX.temp2 = 0;
     }
 }
 
@@ -536,7 +564,7 @@ static void handle_peer_alert(espnow_data_t* data, uint8_t* mac)
     else    
         self_dynamic_payload.RX.rx_status = RX_CHARGING;
 
-    //reconnection timeout
+    //todo: reconnection timeout
 }
 
 
@@ -598,6 +626,9 @@ static void espnow_data_prepare(espnow_data_t *buf, espnow_message_type type)
         buf->field_2 = self_dynamic_payload.RX.current;
         buf->field_3 = self_dynamic_payload.RX.temp1;
         buf->field_4 = self_dynamic_payload.RX.temp2;
+        break;
+    case DATA_RX_LEFT:
+        // no additional data needed
         break;
         
     default:
@@ -845,6 +876,11 @@ static void espnow_task(void *pvParameter)
                         DynTimeout = recv_data->field_1;
                         rxLocalized = true;
                     }
+                    else if (msg_type == DATA_RX_LEFT)
+                    {
+                        //ESP_LOGW(TAG, "RX has left received from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
+                        rxLocalized = false;
+                    }
                     else if(msg_type == DATA_DYNAMIC)
                     {
                         //ESP_LOGI(TAG, "Receive DYNAMIC data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
@@ -852,7 +888,7 @@ static void espnow_task(void *pvParameter)
                     }
                     else if (msg_type == DATA_ALERT)
                     {
-                        //ESP_LOGI(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
+                        //ESP_LOGW(TAG, "Receive ALERT data from: "MACSTR", len: %d", MAC2STR(recv_cb->mac_addr), recv_cb->data_len);
                         handle_peer_alert(recv_data, recv_cb->mac_addr); 
                     }
                     else
@@ -895,27 +931,26 @@ static void pass_the_baton()
 
     //ESP_LOGW(TAG, "next baton %d", p->position);
 
-    //if (previousTX_pos != p->position)
-    //{
+    if (previousTX_pos != p->position)
+    {
         //switch all OFF
         reset_the_baton();
-        vTaskDelay(900);
+        vTaskDelay(LOCALIZATION_TIME_MS);
 
         //switch next ON
         if(p->position == CONFIG_UNIT_ID)
         {
-            ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
+            //ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
             write_STM_command(TX_LOCALIZATION);
         }
         else
         {
-            ESP_LOGI(TAG, "Next TX for localization is ID %d, switching it ON via mesh-lite", p->position);
+            //ESP_LOGI(TAG, "Next TX for localization is ID %d, switching it ON via mesh-lite", p->position);
             send_control_payload(TX_LOCALIZATION, p->MACaddress);
         }
-        vTaskDelay(900);
-
-        previousTX_pos = p->position;
-    //}
+        vTaskDelay(LOCALIZATION_TIME_MS);
+    }
+    previousTX_pos = p->position;
 }
 
 static void alert_task(void *pvParameters)
@@ -1081,15 +1116,6 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             { 
                 // Initialize peer management (adding myself)
                 peer_init();
-                
-                // Initialize MQTT client manager
-                esp_err_t ret = mqtt_client_manager_init();
-                if (ret != ESP_OK) {
-                    ESP_LOGE(TAG, "Failed to initialize MQTT client manager");
-                } else {
-                    ESP_LOGI(TAG, "MQTT client manager started successfully");
-                }
-                
             }
             break;
         case ESP_MESH_LITE_EVENT_CORE_STARTED:
@@ -1112,6 +1138,8 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGI(TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip)); 
             if (!is_root_node)
                 send_static_payload();
+            else
+                mqtt_client_manager_init();
             break;
 
         case IP_EVENT_STA_LOST_IP:

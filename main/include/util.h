@@ -50,12 +50,10 @@
 #define OVERCURRENT_RX                      2 //5
 #define OVERVOLTAGE_RX                      100  //150
 #define OVERTEMPERATURE_RX                  60
-#define MIN_RX_VOLTAGE                      60  //40
+#define MIN_RX_VOLTAGE                      40  //60
 
 /* LOC TIMING */
-#define REACTION_TIME                       1000    //milliseconds
-#define BATON_PASS_TIMEOUT                  10000   //milliseconds
-#define UART_TX_DELAY                       100     //milliseconds
+#define LOCALIZATION_TIME_MS                50     //milliseconds
 
 /* DYNAMIC PAYLOAD MAX TIMING */
 #define PEER_DYNAMIC_TIMER                  15      //15s

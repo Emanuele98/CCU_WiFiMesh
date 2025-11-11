@@ -32,6 +32,7 @@ typedef enum {
     DATA_ALERT,                          // Contains Alert from RX
     DATA_DYNAMIC,                        // Dynamic Payload from RX
     DATA_ASK_DYNAMIC,                    // Ask dynamic payload from RX
+    DATA_RX_LEFT                         // Notify that RX has left
 } espnow_message_type;
 
 /* ESP NOW PAYLOAD */

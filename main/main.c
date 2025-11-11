@@ -21,7 +21,7 @@ void print_firmware_version(void)
 void app_main(void)
 {
     //! Default (for simulation avoiding I2C scan)
-    //UNIT_ROLE = TX;
+    //UNIT_ROLE = TX;  //TX or RX
     //internalFWTEST = true;
 
     print_firmware_version();
@@ -55,7 +55,6 @@ void app_main(void)
             ESP_LOGI(TAG, "TX unit detected via I2C scan");
         }
     }
-    
 
     //Create group event 
     eventGroupHandle = xEventGroupCreate();
