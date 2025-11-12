@@ -3,6 +3,32 @@
 
 static const char *TAG = "MQTT_CLIENT";
 
+// CA Certificate for server verification
+// Copy the content of ca.crt file here
+static const char *mqtt_ca_cert = \
+"-----BEGIN CERTIFICATE-----\n" \
+"MIIDszCCApugAwIBAgIUQtkzgohELHulJcPxI3OLmsWEMnswDQYJKoZIhvcNAQEL\
+BQAwaTELMAkGA1UEBhMCUFQxDjAMBgNVBAgMBUJyYWdhMREwDwYDVQQHDAhCYXJj\
+ZWxvczESMBAGA1UECgwJQnVtYmxlYmVlMQwwCgYDVQQLDANJb1QxFTATBgNVBAMM\
+DEJ1bWJsZWJlZS1DQTAeFw0yNTExMTIxNDA1MzlaFw0yNjExMTIxNDA1MzlaMGkx\
+CzAJBgNVBAYTAlBUMQ4wDAYDVQQIDAVCcmFnYTERMA8GA1UEBwwIQmFyY2Vsb3Mx\
+EjAQBgNVBAoMCUJ1bWJsZWJlZTEMMAoGA1UECwwDSW9UMRUwEwYDVQQDDAxCdW1i\
+bGViZWUtQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCrnzrcUkbR\
+Xkc4JQ3KunSnlR6WXq8F4TgYXE8dgrODBiZMfsF/IZHcPNskVBk7tGmKf2Zi1/G+\
+IiVlIO1keOPW9uvJIGu58qP1PqANwUAgSgkrwFLiejR7Y4MZl3TPObPS9ipWjqTn\
+06Bxl1IFQSIUBdwwewXJSOBATCok3Z+YNDEIN+P3Vr/AouNUkQXysth5FbqTQ7T0\
+TnpI6mE9yhaVVE2ea0uV7BPJK99lkY1pWKhd4iXH5hmEn+EUmC1O1Vwby+D+Adty\
+eM3byWS3b5pCkFB9ohP0km/v1aWUvjL2XO1PUt9NElwKxpt98dUMLnc0b4cyPBtF\
+sKJHZjl5zmynAgMBAAGjUzBRMB0GA1UdDgQWBBSy2EGiZcz/357TjMdJZDE92dg1\
+TjAfBgNVHSMEGDAWgBSy2EGiZcz/357TjMdJZDE92dg1TjAPBgNVHRMBAf8EBTAD\
+AQH/MA0GCSqGSIb3DQEBCwUAA4IBAQBKSziB6JktvtBoEz/p1gETAKSjlvTKlw4Z\
+hKNQgszH9lrStz1eUNJ5ywqgu6uA6IrYPRO77iP4ATMs+H4yTuO4+7g1N9M/jjlY\
+JkcZTpuupV0A1DJzMGHmK78KjAFUGcb0hvnmiz3jEkK/SG9jHPX9XC1K+l4zDW6W\
+tlix47HIKl0FuucY3e5L8EVOkBElQRsNEcJYoragJkxSNRcxFbG+3qIwVw/xqobt\
+2Z1XjFNBMiTBHtxrPSBZcEU2dhaRrO3Z6+LY//MzAjK/DnAkLhiL/HdExTdNp7ax\
+FCXWF09idcIAbIR//oI1dmqyKZoxiMq3UuHDvR6E+TzlZVmB+tER\n" \
+"-----END CERTIFICATE-----\n";
+
 /* MQTT client handle */
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 static bool mqtt_connected = false;
@@ -376,15 +402,36 @@ esp_err_t mqtt_client_manager_init(void)
     mqtt_initialized = true;
     
     // Configure MQTT client
-    const esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = MQTT_BROKER_URI,
-        .network.reconnect_timeout_ms = MQTT_RECONNECT_INTERVAL_MS,
-        .network.timeout_ms = 30000,
-        .network.disable_auto_reconnect = false,
-        // Add TCP keepalive settings
-        .session.keepalive = 120,  // MQTT keepalive (seconds)
-        .buffer.size = 4096,        // Increased for JSON
-        .buffer.out_size = 4096,    // Increased for JSON
+    // Configure MQTT client with TLS and authentication
+    esp_mqtt_client_config_t mqtt_cfg = {
+        .broker = {
+            .address = {
+                .hostname = MQTT_BROKER_HOST,
+                .port = MQTT_BROKER_PORT,
+                .transport = MQTT_TRANSPORT_OVER_SSL,
+            },
+            .verification = {
+                .certificate = mqtt_ca_cert,
+                .skip_cert_common_name_check = true,  // Set to false if using proper domain
+            },
+        },
+        .credentials = {
+            .username = MQTT_USERNAME,
+            .authentication.password = MQTT_PASSWORD,
+        },
+        .network = {
+            .reconnect_timeout_ms = MQTT_RECONNECT_INTERVAL_MS,
+            .timeout_ms = 30000,
+            .disable_auto_reconnect = false,
+        },
+        .session = {
+            .keepalive = 120,
+            .disable_clean_session = false,
+        },
+        .buffer = {
+            .size = 4096,
+            .out_size = 4096,
+        },
     };
     
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);

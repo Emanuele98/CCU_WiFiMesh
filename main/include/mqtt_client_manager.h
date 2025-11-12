@@ -5,8 +5,14 @@
 #include "peer.h"
 #include "mqtt_client.h"
 
-/* MQTT broker URI */
-#define MQTT_BROKER_URI                 "mqtt://15.188.29.195:1883"
+// MQTT Broker Settings
+#define MQTT_BROKER_HOST "15.188.29.195"
+#define MQTT_BROKER_PORT 8883  // Changed from 1883 to 8883 for TLS
+#define MQTT_USERNAME "bumblebee"
+#define MQTT_PASSWORD "bumblebee2025"
+
+// Use secure connection
+#define MQTT_USE_TLS 1
 
 /* Publishing intervals */
 #define MQTT_MIN_PUBLISH_INTERVAL_MS    30000                // 30s
