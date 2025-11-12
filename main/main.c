@@ -21,8 +21,8 @@ void print_firmware_version(void)
 void app_main(void)
 {
     //! Default (for simulation avoiding I2C scan)
-    //UNIT_ROLE = TX;  //TX or RX
-    //internalFWTEST = true;
+    UNIT_ROLE = RX;  //TX or RX
+    internalFWTEST = true;
 
     print_firmware_version();
 

@@ -6,6 +6,7 @@ static const char *TAG = "MQTT_CLIENT";
 /* MQTT client handle */
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 static bool mqtt_connected = false;
+static bool mqtt_initialized = false;
 
 /* Task handle */
 static TaskHandle_t mqtt_publish_task_handle = NULL;
@@ -349,7 +350,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                 {
                     ESP_LOGW(TAG, "Switch system OFF - Dashboard command!");
                     write_STM_command(TX_OFF);
-                    //previousTX_pos = 0; //reset localization process
                     //todo: also send OFF to all connected pads
                 }
             }
@@ -367,11 +367,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 
 esp_err_t mqtt_client_manager_init(void)
 {
-    if (mqtt_client_is_connected()) {
-        ESP_LOGI(TAG, "MQTT client already connected");
+    if (mqtt_initialized) {
+        ESP_LOGI(TAG, "MQTT client already initialized");
         return ESP_OK;
     }
     //ESP_LOGI(TAG, "Initializing MQTT client manager");
+
+    mqtt_initialized = true;
     
     // Configure MQTT client
     const esp_mqtt_client_config_t mqtt_cfg = {

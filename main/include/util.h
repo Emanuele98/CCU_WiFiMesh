@@ -47,8 +47,8 @@
 #define FOD_ACTIVE                          1
 
 /* ALERTS LIMITS RX */
-#define OVERCURRENT_RX                      2 //5
-#define OVERVOLTAGE_RX                      100  //150
+#define OVERCURRENT_RX                      5//2 //5
+#define OVERVOLTAGE_RX                      150//100  //150
 #define OVERTEMPERATURE_RX                  60
 #define MIN_RX_VOLTAGE                      40  //60
 
@@ -63,6 +63,7 @@
 
 /* RECONNECTION TIMING */
 #define ALERT_TIMEOUT                       60*1000     //1 minutes
+#define AFTER_ALERT_DATA_DELAY              5000        //5 seconds to allow dynamic data transmission before disconnection
 
 /* I2C CONFIGURATION */
 #define I2C_MASTER_SCL_IO                   19                   /*!< gpio number for I2C master clock */
