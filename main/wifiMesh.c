@@ -648,6 +648,25 @@ static void add_peer_if_needed(const uint8_t *peer_addr)
     }
 }
 
+// avoid for now as creates issues
+/*
+static void esp_now_encrypt_peer(const uint8_t *peer_addr)
+{
+    esp_now_peer_info_t *peer = malloc(sizeof(esp_now_peer_info_t));
+    if (peer == NULL) {
+        ESP_LOGE(TAG, "Malloc peer information fail");
+        return;
+    }
+    ESP_ERROR_CHECK( esp_now_get_peer(peer_addr, peer) );
+      
+    //add local master key (LMK)
+    peer->encrypt = true;
+    memcpy(peer->lmk, ESPNOW_LMK, ESP_NOW_KEY_LEN);
+    ESP_ERROR_CHECK( esp_now_mod_peer(peer) );
+    free(peer);
+}
+*/
+
 /* ESPNOW sending or receiving callback function is called in WiFi task.
  * Users should not do lengthy operations from this task. Instead, post
  * necessary data to a queue and handle it from a lower priority task. */
@@ -751,7 +770,7 @@ static void espnow_task(void *pvParameter)
                     }
                     else
                     {
-                        //ESP_LOGW(TAG, "Unicast data sent %d!", last_msg_type);
+                        ESP_LOGW(TAG, "Unicast data sent %d!", last_msg_type);
 
                         //unicast message
                         if (send_cb->status != ESP_NOW_SEND_SUCCESS) 
@@ -801,7 +820,7 @@ static void espnow_task(void *pvParameter)
                     //int8_t unitID = recv_data->id;
                     espnow_message_type msg_type = recv_data->type;
 
-                    //ESP_LOGI(TAG, "Received ESP-NOW message with from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
+                    ESP_LOGI(TAG, "Received ESP-NOW message %d with from: "MACSTR"", msg_type, MAC2STR(recv_cb->mac_addr));
 
                     if (msg_type == DATA_BROADCAST && (UNIT_ROLE == TX))
                     {
@@ -843,6 +862,8 @@ static void espnow_task(void *pvParameter)
                                 // ask for dynamic data 
                                 espnow_send_message(DATA_ASK_DYNAMIC, recv_cb->mac_addr);
                                 write_STM_command(TX_DEPLOY);
+                                // master encrypt the peer after sending this first unicast message (as it needs to be encrypted on both sides!)
+                                //esp_now_encrypt_peer(recv_cb->mac_addr);
                             }
                         }   
                     }
@@ -851,6 +872,8 @@ static void espnow_task(void *pvParameter)
                         ESP_LOGW(TAG, "Locking TX on ESPNOW!");
                         // Save peer and communicate via ESP-NOW
                         add_peer_if_needed(recv_cb->mac_addr);
+                        //RX encrypts the TX peer after receiving this first unicast message
+                        //esp_now_encrypt_peer(recv_cb->mac_addr);
                         //save TX parent MAC addr
                         memcpy(TX_parent_mac, recv_cb->mac_addr, ETH_HWADDR_LEN);
                         DynTimeout = recv_data->field_1;
@@ -1083,6 +1106,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             is_mesh_connected = true;
             xEventGroupSetBits(eventGroupHandle, MESH_FORMEDBIT);
+            // add static payload here? investigate why missing sometimes
             break;
         case ESP_MESH_LITE_EVENT_NODE_LEAVE:
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
@@ -1211,6 +1235,9 @@ void wifi_mesh_init()
     // Initialize mesh-lite
     esp_mesh_lite_config_t mesh_lite_config = ESP_MESH_LITE_DEFAULT_INIT();
     esp_mesh_lite_init(&mesh_lite_config);
+
+    /* Set primary master key. */
+    ESP_ERROR_CHECK( esp_now_set_pmk((uint8_t *)ESPNOW_PMK) );
 
     /*
     if(IS_TX_UNIT)

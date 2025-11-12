@@ -337,7 +337,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
             mqtt_connected = true;
             esp_mqtt_client_subscribe(mqtt_client, controlTopic, 1); // subscribe to control
-            publish_json_data(controlTopic, "0"); // reset control button
+            //publish_json_data(controlTopic, "0"); // reset control button
             break;
             
         case MQTT_EVENT_DISCONNECTED:

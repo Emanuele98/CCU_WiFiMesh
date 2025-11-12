@@ -47,8 +47,8 @@
 #define FOD_ACTIVE                          1
 
 /* ALERTS LIMITS RX */
-#define OVERCURRENT_RX                      5//2 //5
-#define OVERVOLTAGE_RX                      150//100  //150
+#define OVERCURRENT_RX                      2 //5
+#define OVERVOLTAGE_RX                      100  //150
 #define OVERTEMPERATURE_RX                  60
 #define MIN_RX_VOLTAGE                      40  //60
 

@@ -46,14 +46,14 @@ menu "Example Configuration"
 
     config FW_VERSION_MINOR
         int "Minor version" 
-        default 1
+        default 2
         range 0 99
         help
             Minor version number (0-99)
 
     config FW_VERSION_PATCH
         int "Patch version"
-        default 2
+        default 0
         range 0 99
         help
             Patch version number (0-99)

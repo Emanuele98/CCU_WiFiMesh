@@ -26,6 +26,9 @@
 #define MAX_COMMS_ERROR                     10
 #define ESPNOW_QUEUE_SIZE                   5
 
+#define ESPNOW_PMK                          "pmk1234567890999" // ESP-NOW primary master key
+#define ESPNOW_LMK                          "lmk1234567890999" // ESP-NOW local master key
+
 /* ESP-NOW message type */
 typedef enum {
     DATA_BROADCAST,                      // Contains Localization (RX Voltage)
