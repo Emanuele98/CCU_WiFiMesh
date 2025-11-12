@@ -2,23 +2,27 @@ version: '3.8'
 
 services:
   # ===============================================
-  # MOSQUITTO - MQTT Broker
+  # MOSQUITTO - MQTT Broker (SECURE)
   # ===============================================
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: bumblebee-mosquitto
     ports:
-      - "1883:1883"      # MQTT
-      - "9001:9001"      # WebSocket (optional)
+      - "1883:1883"      # MQTT (local/internal only)
+      - "8883:8883"      # MQTT over TLS (secure)
+      - "9001:9001"      # WebSocket over TLS
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/config/passwd:/mosquitto/config/passwd
+      - ./mosquitto/certs:/mosquitto/certs
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     networks:
-      - bumblebee-network
+      bumblebee-network:
+        ipv4_address: 172.20.0.2
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1883 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -37,13 +41,14 @@ services:
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=bumblebee2024
+      - DOCKER_INFLUXDB_INIT_PASSWORD=bumblebee2025
       - DOCKER_INFLUXDB_INIT_ORG=bumblebee
       - DOCKER_INFLUXDB_INIT_BUCKET=sensor_data
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=bumblebee-super-secret-token
       - DOCKER_INFLUXDB_INIT_RETENTION=0
     networks:
-      - bumblebee-network
+      bumblebee-network:
+        ipv4_address: 172.20.0.3
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "influx", "ping"]
@@ -54,18 +59,22 @@ services:
   # ===============================================
   # TELEGRAF - Data Bridge (MQTT to InfluxDB)
   # ===============================================
-  telegraf:
+    telegraf:
     image: telegraf:1.28
     container_name: bumblebee-telegraf
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    environment:
+      - MQTT_USERNAME=telegraf
+      - MQTT_PASSWORD=bumblebee2025
     depends_on:
       mosquitto:
         condition: service_healthy
       influxdb:
         condition: service_healthy
     networks:
-      - bumblebee-network
+      bumblebee-network:
+        ipv4_address: 172.20.0.4
     restart: unless-stopped
 
   # ===============================================
@@ -81,11 +90,14 @@ services:
     environment:
       - TZ=Europe/Rome
       - NODE_RED_ENABLE_PROJECTS=false
+      - MQTT_USERNAME=nodered
+      - MQTT_PASSWORD=bumblebee2025
     depends_on:
       mosquitto:
         condition: service_healthy
     networks:
-      - bumblebee-network
+      bumblebee-network:
+        ipv4_address: 172.20.0.5
     restart: unless-stopped
 
 # ===============================================
