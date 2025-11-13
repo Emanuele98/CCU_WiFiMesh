@@ -43,8 +43,6 @@ static const char *dynamicTopic = "dynamic";
 static const char *alertTopic = "alerts";
 static const char *controlTopic = "bumblebee/control";
 
-
-
 /*******************************************************
  *                JSON Helper Functions
  *******************************************************/
@@ -484,4 +482,19 @@ esp_err_t mqtt_client_manager_stop(void)
 bool mqtt_client_is_connected(void)
 {
     return mqtt_connected;
+}
+
+void publish_json_data_control(const char *json_string)
+{
+    if (!mqtt_connected || mqtt_client == NULL) {
+        ESP_LOGW(TAG, "MQTT not connected, cannot publish control data");
+        return;
+    }
+    
+    if (!json_string) {
+        ESP_LOGE(TAG, "Null JSON string for control data");
+        return;
+    }
+    
+    publish_json_data(controlTopic, json_string);
 }

@@ -433,7 +433,7 @@ struct TX_peer* TX_peer_add(uint8_t *mac, uint8_t id)
     p = TX_peer_find_by_mac(mac);
     if (p) 
     {
-        ESP_LOGE(TAG, "Peer already exists in the memory pool");
+        //ESP_LOGE(TAG, "Peer already exists in the memory pool");
         return p;
     }
 
@@ -527,7 +527,7 @@ struct RX_peer* RX_peer_add(uint8_t *mac, uint8_t id)
     p = RX_peer_find_by_mac(mac);
     if (p) 
     {
-        ESP_LOGE(TAG, "Peer already exists in the memory pool");
+        //ESP_LOGE(TAG, "Peer already exists in the memory pool");
         return p;
     }
 

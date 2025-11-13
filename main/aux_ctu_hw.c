@@ -251,9 +251,9 @@ esp_err_t write_STM_command(TX_status command)
         else if (command == TX_OFF)
         {
             cJSON_AddStringToObject(root, "mode", "off");
-            self_dynamic_payload.TX.tx_status = TX_OFF;
             strip_misalignment = strip_charging = false;
             strip_enable = true;
+            self_dynamic_payload.TX.tx_status = TX_OFF;
             //ESP_LOGW(TAG, "OFF");
         }
 

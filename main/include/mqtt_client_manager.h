@@ -40,4 +40,11 @@ esp_err_t mqtt_client_manager_stop(void);
  */
 bool mqtt_client_is_connected(void);
 
+/**
+ * @brief Publish control JSON data to MQTT broker
+ * 
+ * @param json_string JSON string to publish
+ */
+void publish_json_data_control(const char *json_string);
+
 #endif /* MQTT_CLIENT_MANAGER_H */

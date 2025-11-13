@@ -19,6 +19,7 @@ static espnow_data_t *espnow_data;
 // ESP-NOW Retrasmissions variable
 static uint8_t comms_fail = 0;
 static espnow_message_type last_msg_type;
+static bool staticSent = false;
 
 //Mesh Lite self payloads
 static mesh_localization_payload_t my_localization_payload;
@@ -67,6 +68,8 @@ static esp_err_t static_to_root_raw_msg_response_process(uint8_t *data, uint32_t
     OVER_VOLTAGE = received_payload->OVERVOLTAGE_limit;
     OVER_TEMPERATURE = received_payload->OVERTEMPERATURE_limit;
     FOD = received_payload->FOD;
+
+    staticSent = true;
 
     return ESP_OK;
 }
@@ -769,7 +772,7 @@ static void espnow_task(void *pvParameter)
                     }
                     else
                     {
-                        ESP_LOGW(TAG, "Unicast data sent %d!", last_msg_type);
+                        //ESP_LOGW(TAG, "Unicast data sent %d!", last_msg_type);
 
                         //unicast message
                         if (send_cb->status != ESP_NOW_SEND_SUCCESS) 
@@ -819,12 +822,20 @@ static void espnow_task(void *pvParameter)
                     //int8_t unitID = recv_data->id;
                     espnow_message_type msg_type = recv_data->type;
 
-                    ESP_LOGI(TAG, "Received ESP-NOW message %d with from: "MACSTR"", msg_type, MAC2STR(recv_cb->mac_addr));
+                    //ESP_LOGI(TAG, "Received ESP-NOW message %d with from: "MACSTR"", msg_type, MAC2STR(recv_cb->mac_addr));
 
                     if (msg_type == DATA_BROADCAST && (UNIT_ROLE == TX))
                     {
                         ESP_LOGI(TAG, "Receive broadcast data from: "MACSTR", RX voltage: %.2f", MAC2STR(recv_cb->mac_addr), recv_data->field_1);
-
+                        //double check its position is 0
+                        if (is_root_node) {
+                            struct RX_peer* p = RX_peer_find_by_mac(recv_cb->mac_addr);
+                            if (p != NULL && p->position != 0)
+                            {
+                                removeFromRelativeTX(p->position);
+                                p->position = 0;
+                            }
+                        }
                         if (recv_data->field_1 > MIN_RX_VOLTAGE)
                         {
                             //Case 1 - I am another RX - discard - done
@@ -848,6 +859,7 @@ static void espnow_task(void *pvParameter)
                                         p->RX_status = RX_CHARGING;
                                         ESP_LOGI(TAG, "RX peer position updated to %d", p->position);
                                     }
+                                    vTaskDelay(500);
                                     // master encrypt the peer after sending this first unicast message (as it needs to be encrypted on both sides!)
                                     esp_now_encrypt_peer(recv_cb->mac_addr);
                                 }
@@ -863,6 +875,7 @@ static void espnow_task(void *pvParameter)
                                 // ask for dynamic data 
                                 espnow_send_message(DATA_ASK_DYNAMIC, recv_cb->mac_addr);
                                 write_STM_command(TX_DEPLOY);
+                                vTaskDelay(500);
                                 // TX encrypt the peer after sending this first unicast message (as it needs to be encrypted on both sides!)
                                 esp_now_encrypt_peer(recv_cb->mac_addr);
                             }
@@ -1107,7 +1120,9 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             is_mesh_connected = true;
             xEventGroupSetBits(eventGroupHandle, MESH_FORMEDBIT);
-            //todo add static payload here? investigate why missing sometimes
+            if (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) != 0 && !staticSent && !is_root_node) {
+                send_static_payload();
+            }
             break;
         case ESP_MESH_LITE_EVENT_NODE_LEAVE:
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
@@ -1124,7 +1139,9 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             mesh_level = esp_mesh_lite_get_level();
             is_root_node = (mesh_level == 1);
             is_mesh_connected = true;
-            //todo add static payload here? investigate why missing sometimes
+            if (memcmp(node_info->mac_addr, self_mac, ETH_HWADDR_LEN) != 0 && !staticSent && !is_root_node) {
+                send_static_payload();
+            }
             // if not a root, send static payload to root
             if (is_root_node) // TODO handle reconnection cases
             { 
@@ -1162,9 +1179,9 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
         case IP_EVENT_STA_LOST_IP:
             ESP_LOGW(TAG, "<IP_EVENT_STA_LOST_IP>");
             gotIP = false;
-            is_mesh_connected = false;
-            is_root_node = false;
-            mesh_level = -1;
+            //is_mesh_connected = false;
+            //is_root_node = false;
+            //mesh_level = -1;
             break;
 
         default:

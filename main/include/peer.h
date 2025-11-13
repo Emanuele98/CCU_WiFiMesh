@@ -358,4 +358,11 @@ void init_payloads();
  */
 void update_status(struct TX_peer *peer);
 
+/**
+ * @brief Remove a TX peer from the relative TX list based on its position
+ * 
+ * @param pos Position of the TX peer to remove
+ */
+void removeFromRelativeTX(int8_t pos);
+
 #endif /* PEER_H */

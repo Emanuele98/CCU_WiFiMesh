@@ -36,8 +36,8 @@ void read_unit_id() {
 void app_main(void)
 {
     //! Default (for simulation avoiding I2C scan)
-    //UNIT_ROLE = TX;  //TX or RX
-    //internalFWTEST = true;
+    UNIT_ROLE = TX;  //TX or RX
+    internalFWTEST = true;
 
     print_firmware_version();
 
@@ -84,7 +84,6 @@ void app_main(void)
 
     /* Initialize Hardware*/
     init_HW();
-    //todo deploy 1-to-1 sync button
 }
 
 
