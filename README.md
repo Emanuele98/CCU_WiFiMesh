@@ -51,7 +51,7 @@ Bumblebee is a distributed wireless charging network firmware that enables intel
 ### ⚠️ Known Limitations
 - Fully charged scenario incomplete
 - WiFi power saving features disabled for performance
-- Unit IDs not yet persistent in NVS (hardcoded in `unitID.h`)
+- Unit IDs not yet persistent in NVS (hardcoded in `unitID.h`) //todo done!
 - OTA updates not implemented
 
 ### 🔄 Testing Required
@@ -80,8 +80,8 @@ Edge cases and real-world scenarios need validation before production deployment
 
 3. **Configure Unit**
    ```c
-   // Edit main/include/unitID.h
-   #define CONFIG_UNIT_ID 1  // Unique ID per unit
+   // Edit main/include/unitID.h //todo change to NVS
+   #define UNIT_ID 1  // Unique ID per unit
    ```
 
 4. **Build & Flash**
@@ -168,7 +168,6 @@ Edge cases and real-world scenarios need validation before production deployment
 BumblebeeWiFiMeshLite/
 ├── main/
 │   ├── include/           # Header files
-│   │   ├── unitID.h      # Unit configuration
 │   │   ├── peer.h        # Peer management
 │   │   ├── wifiMesh.h    # Mesh networking
 │   │   └── mqtt_client_manager.h
@@ -265,7 +264,7 @@ idf.py menuconfig
 **Mesh Not Forming**
 - Verify all units use same WiFi credentials
 - Check router is accessible: `ping 192.168.1.1`
-- Ensure unique `CONFIG_UNIT_ID` per device
+- Ensure unique `UNIT_ID` per device
 
 **MQTT Connection Failed**
 - Test broker connectivity: `ping 15.188.29.195`

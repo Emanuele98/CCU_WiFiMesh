@@ -576,7 +576,7 @@ static void espnow_data_prepare(espnow_data_t *buf, espnow_message_type type)
     // initiliaze buf to 0
     memset(buf, 0, sizeof(espnow_data_t));
     // esp NOW data
-    buf->id = CONFIG_UNIT_ID;
+    buf->id = UNIT_ID;
     buf->type = type;
 
     // save last message type to allow retranmission
@@ -844,7 +844,7 @@ static void espnow_task(void *pvParameter)
                                     struct RX_peer* p = RX_peer_find_by_mac(recv_cb->mac_addr);
                                     if (p != NULL)
                                     {
-                                        p->position = CONFIG_UNIT_ID; //position same as ID for RX
+                                        p->position = UNIT_ID; //position same as ID for RX
                                         p->RX_status = RX_CHARGING;
                                         ESP_LOGI(TAG, "RX peer position updated to %d", p->position);
                                     }
@@ -856,7 +856,7 @@ static void espnow_task(void *pvParameter)
                             else if (self_dynamic_payload.TX.tx_status == TX_LOCALIZATION)
                             {
                                 //Advise master TO update peer position
-                                send_localization_payload(CONFIG_UNIT_ID, recv_cb->mac_addr);
+                                send_localization_payload(UNIT_ID, recv_cb->mac_addr);
                                 ESP_LOGI(TAG, "RX has been located on this pad!");
                                 // Save peer and communicate via ESP-NOW
                                 add_peer_if_needed(recv_cb->mac_addr);
@@ -940,7 +940,7 @@ static void pass_the_baton()
     vTaskDelay(LOCALIZATION_TIME_MS);
 
     //switch next ON
-    if(p->position == CONFIG_UNIT_ID)
+    if(p->position == UNIT_ID)
     {
         //ESP_LOGI(TAG, "I am the next TX for localization, switching ON locally");
         write_STM_command(TX_LOCALIZATION);
@@ -1107,7 +1107,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGI(TAG, "New node joined: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             is_mesh_connected = true;
             xEventGroupSetBits(eventGroupHandle, MESH_FORMEDBIT);
-            // add static payload here? investigate why missing sometimes
+            //todo add static payload here? investigate why missing sometimes
             break;
         case ESP_MESH_LITE_EVENT_NODE_LEAVE:
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_LEAVE>");
@@ -1124,6 +1124,7 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             mesh_level = esp_mesh_lite_get_level();
             is_root_node = (mesh_level == 1);
             is_mesh_connected = true;
+            //todo add static payload here? investigate why missing sometimes
             // if not a root, send static payload to root
             if (is_root_node) // TODO handle reconnection cases
             { 

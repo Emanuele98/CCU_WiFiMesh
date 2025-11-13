@@ -70,10 +70,10 @@ void peer_init()
 
     delete_all_peers();
 
-    struct TX_peer *p = TX_peer_add(self_mac, CONFIG_UNIT_ID);
+    struct TX_peer *p = TX_peer_add(self_mac, UNIT_ID);
     if (p != NULL) 
     {
-        ESP_LOGI(TAG, "Added self TX peer with ID %d", CONFIG_UNIT_ID);
+        ESP_LOGI(TAG, "Added self TX peer with ID %d", UNIT_ID);
 
         // Free the malloc'd memory first to avoid leak
         if (p->static_payload)
@@ -648,7 +648,7 @@ void init_payloads()
     memcpy(self_dynamic_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
     memcpy(self_alert_payload.TX.macAddr, self_mac, ETH_HWADDR_LEN);
     memcpy(self_tuning_params.macAddr, self_mac, ETH_HWADDR_LEN);
-    self_static_payload.id = self_dynamic_payload.TX.id = self_previous_dynamic_payload.TX.id = self_alert_payload.TX.id = self_previous_alert_payload.TX.id = CONFIG_UNIT_ID;
+    self_static_payload.id = self_dynamic_payload.TX.id = self_previous_dynamic_payload.TX.id = self_alert_payload.TX.id = self_previous_alert_payload.TX.id = UNIT_ID;
 
     self_static_payload.type = UNIT_ROLE;
     if (UNIT_ROLE == TX)

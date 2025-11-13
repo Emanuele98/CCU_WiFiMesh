@@ -2,6 +2,8 @@
 
 static const char *TAG = "UTIL";
 
+uint8_t UNIT_ID = 0; // Default unit ID, will be set from NVS
+
 bool is_root_node = false;
 
 bool internalFWTEST = false;
@@ -30,6 +32,7 @@ float OVER_VOLTAGE;
 bool FOD;
 bool FULLY_CHARGED;
 
+/*
 void init_NVS(void)
 {
     //NVS reading
@@ -65,6 +68,7 @@ void init_NVS(void)
             nvs_close(my_handle);
         }
 }
+*/
 
 void i2c_scan_bus(void)
 {

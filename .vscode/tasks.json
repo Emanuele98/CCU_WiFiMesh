@@ -1,0 +1,51 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Flash Unit ID",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/flash_unit_id.py",
+                "${input:unitId}",
+                "${input:serialPort}",
+                "${input:chipType}"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "clear": true
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "unitId",
+            "type": "promptString",
+            "description": "Enter Unit ID (e.g., 1001):",
+            "default": "1001"
+        },
+        {
+            "id": "serialPort",
+            "type": "promptString",
+            "description": "Serial Port:",
+            "default": "COM14"
+        },
+        {
+            "id": "chipType",
+            "type": "pickString",
+            "description": "ESP32 Chip Type:",
+            "options": [
+                "esp32",
+                "esp32c3",
+                "esp32c6",
+                "esp32s2",
+                "esp32s3"
+            ],
+            "default": "esp32"
+        }
+    ]
+}

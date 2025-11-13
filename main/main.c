@@ -18,6 +18,21 @@ void print_firmware_version(void)
     ESP_LOGI(TAG, "========================================");
 }
 
+void read_unit_id() {
+    nvs_handle_t nvs_handle;
+    uint32_t unit_id = 0;
+    
+    esp_err_t err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_get_u32(nvs_handle, "unit_id", &unit_id);
+        nvs_close(nvs_handle);
+        ESP_LOGW("UNIT", "Unit ID: %lu", unit_id);
+        UNIT_ID = (uint8_t)unit_id;
+    } else {
+        ESP_LOGE("UNIT", "Unit ID not found - device not provisioned");
+    }
+}
+
 void app_main(void)
 {
     //! Default (for simulation avoiding I2C scan)
@@ -37,7 +52,9 @@ void app_main(void)
     ESP_ERROR_CHECK( ret );
 
     /* Init values on NVS */ 
-    init_NVS();
+    //init_NVS();
+
+    read_unit_id();
 
     /* Initialize I2C component */
     ESP_ERROR_CHECK(i2c_master_init());
@@ -67,6 +84,7 @@ void app_main(void)
 
     /* Initialize Hardware*/
     init_HW();
+    //todo deploy 1-to-1 sync button
 }
 
 
@@ -75,5 +93,5 @@ void app_main(void)
 idf_component_register(SRCS "${srcs}"
                        INCLUDE_DIRS "${include_dirs}"
                        REQUIRES "${requires}"
-                       PRIV_REQUIRES esp_driver_gpio)
+                       PRIV_REQUIRES esp_driver_gpio) //This!
 */

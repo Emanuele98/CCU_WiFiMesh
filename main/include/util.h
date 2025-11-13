@@ -1,8 +1,6 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "unitID.h"
-
 #include <string.h>
 #include <inttypes.h>
 #include <math.h>
@@ -89,6 +87,9 @@
 #define MESH_FORMEDBIT                      BIT0
 #define LOCALIZEDBIT                        BIT1
 
+//*Unit ID
+extern uint8_t UNIT_ID;
+
 extern bool is_root_node;
 
 extern bool internalFWTEST;
@@ -134,7 +135,7 @@ typedef enum {
  * @brief Init the values on NVS - This allows to keep track of each peer's minimum reconnection time over reboots.
  * 
  */
-void init_NVS(void);
+//void init_NVS(void);
 
 /**
  * @brief Scan the I2C bus and print all found devices

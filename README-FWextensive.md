@@ -52,9 +52,9 @@ cd bumblebee-mesh
 
 #### 2. Configure Your Unit
 
-Edit `main/include/unitID.h` to set your unit ID:
+Edit `main/include/unitID.h` to set your unit ID: //todo change to NVS!
 ```c
-#define CONFIG_UNIT_ID 1  // Change to unique ID (1-255)
+#define UNIT_ID 1  // Change to unique ID (1-255)
 ```
 
 Update WiFi credentials in menuconfig:
