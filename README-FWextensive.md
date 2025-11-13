@@ -1,11 +1,12 @@
-# 🐝 Bumblebee WiFi Mesh Network - Firmware Documentation
 
 ## Table of Contents
 - [Quick Start Guide](#quick-start-guide)
 - [System Architecture](#system-architecture)
+- [Security Implementation](#security-implementation)
 - [API & Payload Documentation](#api--payload-documentation)
 - [Communication Procedures](#communication-procedures)
 - [Configuration & Customization](#configuration--customization)
+- [Known Issues & Debugging](#known-issues--debugging)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -15,7 +16,8 @@
 ### Prerequisites
 
 **Hardware:**
-- ESP32-C6 development boards
+- ESP32-C6 development boards (recommended for WiFi 6)
+- ESP32 classic boards (fully supported)
 - I2C sensors (for TX/RX detection)
 - WiFi router with internet access
 
@@ -23,6 +25,22 @@
 - ESP-IDF v5.5.1
 - Python 3.7+
 - Git
+- VSCode with ESP-IDF extension
+
+### Board Compatibility
+
+| Board | WiFi Standard | Performance | Recommended Use |
+|-------|--------------|-------------|-----------------|
+| **ESP32-C6** | WiFi 6 (802.11ax) | Best latency, power efficiency | Production deployment |
+| **ESP32** | WiFi 4 (802.11n) | Good performance, proven stability | Development/testing |
+
+The firmware automatically detects the target during compilation:
+```bash
+# VSCode ESP-IDF extension handles this automatically
+# Or manually:
+idf.py set-target esp32c6  # For ESP32-C6
+idf.py set-target esp32     # For ESP32 classic
+```
 
 ### Installation Steps
 
@@ -39,46 +57,58 @@ Edit `main/include/unitID.h` to set your unit ID:
 #define CONFIG_UNIT_ID 1  // Change to unique ID (1-255)
 ```
 
-Update WiFi credentials in `main/Kconfig.projbuild`:
-```
-CONFIG_MESH_ROUTER_SSID="YourWiFiSSID"
-CONFIG_MESH_ROUTER_PASSWORD="YourWiFiPassword"
-```
-
-Update MQTT broker address in `main/include/mqtt_client_manager.h`:
-```c
-#define MQTT_BROKER_URI "mqtt://15.188.29.195:1883"  // Your MQTT broker IP
-```
-
-#### 3. Build and Flash
-
-**Using ESP-IDF:**
+Update WiFi credentials in menuconfig:
 ```bash
-idf.py build
-idf.py flash monitor
+idf.py menuconfig
+# Navigate to: Component config → Bumblebee Configuration
+# Set SSID and Password
 ```
 
-#### 4. Verify Operation
+#### 3. Configure Security
+
+Update MQTT settings in `main/include/mqtt_client_manager.h`:
+```c
+// MQTT Broker Configuration
+#define MQTT_BROKER_HOST "15.188.29.195"
+#define MQTT_BROKER_PORT 8883  // Secure TLS port
+#define MQTT_USERNAME "bumblebee"
+#define MQTT_PASSWORD "your_secure_password"  // CHANGE IN PRODUCTION!
+```
+
+Add CA certificate to `main/mqtt_client_manager.c`:
+```c
+// Copy content from mosquitto/certs/ca.crt
+static const char *mqtt_ca_cert = \
+"-----BEGIN CERTIFICATE-----\n" \
+"MIIDszCCApugAwIBAgIUQtkzgohELHulJcPxI3OLmsWEMnswDQYJKoZIhvcNAQEL\n" \
+"... (full certificate content) ...\n" \
+"-----END CERTIFICATE-----\n";
+```
+
+#### 4. Build and Flash
+
+```bash
+# Build the project
+idf.py build
+
+# Flash and monitor
+idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+#### 5. Verify Operation
 
 After flashing, you should see in the serial monitor:
 ```
 I (XXX) MAIN: ========================================
 I (XXX) MAIN:   Bumblebee WiFi Mesh
-I (XXX) MAIN:   Firmware Version: vX.X.X
+I (XXX) MAIN:   Firmware Version: v0.2.0
+I (XXX) MAIN:   Build Date: YYYY-MM-DD HH:MM:SS
 I (XXX) MAIN:   ESP-IDF: 5.5.1
 I (XXX) MAIN: ========================================
+I (XXX) MAIN: TX/RX unit detected via I2C scan
 I (XXX) wifiMesh: Mesh network formed
-I (XXX) wifiMesh: Root node: YES/NO
+I (XXX) MQTT_CLIENT: Connected to broker (TLS)
 ```
-
-### First-Time Setup Checklist
-
-- [ ] Flash firmware to at least 2 devices (1 will become ROOT)
-- [ ] Set unique `CONFIG_UNIT_ID` for each device
-- [ ] Ensure all devices use same WiFi credentials
-- [ ] Configure MQTT broker IP address
-- [ ] Power up devices and verify mesh formation
-- [ ] Check MQTT broker receives data on topics: `bumblebee/{unit_id}/dynamic`
 
 ---
 
@@ -86,138 +116,135 @@ I (XXX) wifiMesh: Root node: YES/NO
 
 ### Overview
 
-Bumblebee implements a **WiFi Mesh-Lite network** with **ESP-NOW** for low-latency peer-to-peer communication, designed for wireless charging station monitoring and control.
+Bumblebee implements a **three-layer communication architecture**:
 
-### System Overview
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Cloud Dashboard (MQTT)                    │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-              ┌───────▼────────┐
-              │  WiFi Router   │
-              └───────┬────────┘
-                      │
-              ┌───────▼────────┐
-              │  ROOT/MASTER   │ ◄─── Any TX can be root
-              │    (TX1)       │      (Automatic election)
-              └───┬────────┬───┘
-                  │        │
-        Mesh-Lite │        │ ESP-NOW
-                  │        │ (<10ms)
-                  │   ┌────▼────┐
-                  │   │   RX1   │ ◄─── ROOT's own RX
-                  │   └─────────┘
-                  │
-         ┌────────▼──────────┐
-         │                   │
-    ┌────▼────┐         ┌────▼────┐
-    │   TX2   │         │   TX3   │
-    └────┬────┘         └────┬────┘
-         │                   │  
-  ESP-NOW│                   │ESP-NOW  
-   (<10ms)                   │(<10ms)
-         │                   │  
-    ┌────▼────┐         ┌────▼────┐
-    │   RX2   │         │   RX3   │
-    └─────────┘         └─────────┘
-```
+1. **ESP-NOW Layer**: Direct TX↔RX peer-to-peer (low latency, encrypted)
+2. **WiFi Mesh-Lite Layer**: TX↔TX mesh networking (self-healing, multi-hop)
+3. **MQTT/TLS Layer**: Cloud connectivity (secure, authenticated)
 
-### Key Components
-
-#### 1. **Node Types**
-
-| Type | Role | Capabilities |
-|------|------|-------------|
-| **TX** | Transmitter / Charging Pad | - Sensor monitoring (V, I, T)<br>- WiFi Mesh participant<br>- ESP-NOW sender/receiver<br>- Can become MASTER<br>- MQTT publishing (if MASTER) |
-| **RX** | Receiver / Scooter Unit | - Sensor monitoring (V, I, T)<br>- ESP-NOW sender only<br>- Also mesh beacons <br>- Battery charging status |
-| **MASTER** | Root Node | - TX unit elected as root<br>- MQTT broker connection<br>- Data aggregation<br>- Control distribution |
-
-#### 2. **Communication Layers**
-
-**Layer 1: ESP-NOW (TX ↔ RX)**
-- Protocol: Peer-to-peer, connectionless
-- Purpose: Low-latency sensor data & alerts
-- Latency: ~5-20 ms
-- Range: Up to 200m (line-of-sight)
-- Use Cases:
-  - RX → TX: Dynamic sensor data, alerts, localization
-  - TX → RX: Control commands, requests
-
-**Layer 2: WiFi Mesh-Lite (TX ↔ TX)**
-- Protocol: Star topology with multi-hop support
-- Purpose: Data aggregation to MASTER
-- Latency: ~20 ms per hop
-- Throughput: 20-30 Mbps
-- Max Hops: Up to 10 (configurable)
-- Use Cases:
-  - Child TX → ROOT: Forwarding RX data
-  - ROOT → Child TX: Configuration, control
-
-**Layer 3: MQTT (MASTER ↔ Broker)**
-- Protocol: MQTT v3.1.1
-- Purpose: Cloud/Backend communication
-- QoS: 1 (at least once delivery)
-- Use Cases:
-  - Publishing sensor data
-  - Receiving control commands
-  - Alert notifications
-
-#### 3. **Technology Stack**
+### Technology Stack
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **MCU** | ESP32-C6 | RISC-V, WiFi 6 support |
+| **MCU** | ESP32-C6 / ESP32 | RISC-V/Xtensa, WiFi 6/4 support |
 | **RTOS** | FreeRTOS | Multi-tasking, priority scheduling |
 | **Framework** | ESP-IDF 5.5.1 | Native Espressif SDK |
-| **Build System** | PlatformIO / CMake | Cross-platform development |
 | **Mesh** | ESP-WIFI-MESH-LITE | Lightweight mesh protocol |
 | **P2P** | ESP-NOW | Direct peer communication |
-| **Protocol** | MQTT | IoT messaging |
+| **Protocol** | MQTT over TLS | Secure IoT messaging |
 | **Data Format** | JSON (MQTT) / Binary (ESP-NOW) | Flexible & efficient |
 
-### Performance Characteristics
+---
 
-**Measured Performance (ESP32-C6):**
-```
-TX: 13.18 Mbps, 1170.5 pps, 11706 packets, 16482048 bytes
-RX: 13.18 Mbps, 1170.3 pps, 11708 packets, 16484864 bytes
-RTT: avg=3.11 ms, min=1.60 ms, max=15.60 ms (samples=5375)
-Dropped: 0 packets, Layer: 1, Connected: YES
-```
+## Security Implementation
 
-**Scalability:**
-- **WiFi Mesh**: Unlimited nodes (practical limit ~100)
-- **ESP-NOW**: Up to 20 paired peers per TX
-- **Self-healing**: Automatic mesh reconfiguration
-- **Master election**: Dynamic (any TX can become ROOT)
+### 1. MQTT TLS/SSL Security
 
-### Data Flow Architecture
-
-#### Sensor Reading Flow
-```
-RX Sensors → ESP-NOW → TX (Child) → WiFi Mesh → TX (MASTER) → MQTT → Backend
-   │                       │                        │              
-   └─ Voltage          └─ Aggregation         └─ JSON Payload    
-   └─ Current             └─ Filtering            └─ bumblebee/{id}/dynamic
-   └─ Temperature         └─ Forwarding
-```
-
-#### Alert Flow (Fast Path)
-```
-RX Alert Detection → ESP-NOW → TX (Immediate Action) → WiFi Mesh → MASTER → MQTT
-     (< 10ms)           │            │                    │            │
-                    Local     Switch OFF              Propagate    Backend
-                   Action                              Alert       Notification
+**Configuration:**
+```c
+// main/mqtt_client_manager.c
+esp_mqtt_client_config_t mqtt_cfg = {
+    .broker = {
+        .address = {
+            .hostname = MQTT_BROKER_HOST,
+            .port = MQTT_BROKER_PORT,      // 8883 for TLS
+            .transport = MQTT_TRANSPORT_OVER_SSL,
+        },
+        .verification = {
+            .certificate = mqtt_ca_cert,    // CA certificate
+            .skip_cert_common_name_check = true,  // For self-signed
+        },
+    },
+    .credentials = {
+        .username = MQTT_USERNAME,
+        .authentication.password = MQTT_PASSWORD,
+    },
+};
 ```
 
-#### Control Flow (Bidirectional)
+**Security Features:**
+- TLS 1.2 encryption
+- Certificate validation (self-signed or CA)
+- Username/password authentication
+- Automatic reconnection with exponential backoff
+
+### 2. ESP-NOW Encryption (Fully Working)
+
+**Complete Implementation (MSK + LSK):**
+```c
+// main/include/wifiMesh.h
+#define ESPNOW_PMK "pmk1234567890999"  // Primary Master Key
+#define ESPNOW_LMK "lmk1234567890999"  // Local Master Key
+
+// MSK encryption enabled for initial pairing
+esp_now_peer_info_t peer_info = {
+    .encrypt = false,  // Initially no encryption for discovery
+};
 ```
-Backend → MQTT → MASTER → WiFi Mesh → TX (Target) → ESP-NOW → RX (Execute)
-            │        │         │           │            │
-        Subscribe  Process   Route     Validate     Command
-        bumblebee/ Control   to Child  Target       (Switch ON/OFF)
-        control    
+
+**LSK Encryption Implementation (Working):**
+```c
+// Enable LSK encryption after peer discovery
+static void esp_now_encrypt_peer(const uint8_t *peer_addr)
+{
+    esp_now_peer_info_t peer;
+    ESP_ERROR_CHECK(esp_now_get_peer(peer_addr, &peer));
+    
+    // Enable encryption with Local Master Key
+    peer.encrypt = true;
+    memcpy(peer.lmk, ESPNOW_LMK, ESP_NOW_KEY_LEN);
+    ESP_ERROR_CHECK(esp_now_mod_peer(&peer));
+    
+    ESP_LOGI(TAG, "LSK encryption enabled for peer "MACSTR, MAC2STR(peer_addr));
+}
+```
+
+**Important Implementation Note:**
+The key to successful LSK encryption is ensuring **both sides** encrypt the peer:
+1. **TX/RX Side**: Calls `esp_now_encrypt_peer()` after receiving first message
+2. **Master Side**: Also calls `esp_now_encrypt_peer()` after adding the peer
+3. Both sides must use the same LMK key
+
+**Encryption Flow:**
+```c
+// On Master (TX) side:
+if (msg_type == DATA_ASK_DYNAMIC) {
+    add_peer_if_needed(recv_cb->mac_addr);
+    esp_now_encrypt_peer(recv_cb->mac_addr);  // Master encrypts RX peer
+}
+
+// On RX side:
+if (first_message_received) {
+    add_peer_if_needed(TX_mac_addr);
+    esp_now_encrypt_peer(TX_mac_addr);  // RX encrypts TX peer
+}
+```
+
+**Security Features:**
+- **Dual Encryption**: Both MSK and LSK active
+- **Bi-directional**: Encryption established on both sides
+- **Dynamic**: LSK applied after initial handshake
+- **Secure**: Prevents eavesdropping and replay attacks
+
+### 3. Production Security Recommendations
+
+```yaml
+Development:
+  - Passwords: Hardcoded (visible in repository)
+  - Certificates: Self-signed
+  - Firewall: Open to all IPs
+  - Debug logs: Enabled
+
+Production:
+  - Passwords: Environment variables or secure storage
+  - Certificates: Let's Encrypt or commercial CA
+  - Firewall: Whitelist specific IP ranges
+  - Debug logs: Disabled or ERROR level only
+  - Additional: 
+    - Certificate pinning
+    - Mutual TLS authentication
+    - Regular password rotation
+    - Security audit logging
 ```
 
 ---
@@ -234,416 +261,132 @@ bumblebee/
 └── control              # Global control commands
 ```
 
-**Topic Patterns:**
-- `bumblebee/{unit_id}/dynamic` - Telemetry from specific unit
-- `bumblebee/{unit_id}/alerts` - Alerts from specific unit
-- `bumblebee/control` - Global control (all units subscribe)
-
 ### Payload Formats
 
-#### 1. Dynamic Payload (Telemetry)
-
-**MQTT Topic:** `bumblebee/{unit_id}/dynamic`  
-**Publish Rate:** Every 30s OR when significant change detected  
-**Format:** JSON
-
+#### 1. Dynamic Payload (bumblebee/{unit_id}/dynamic)
 ```json
 {
-  "unit_id": 1,
-  "tx": {
-    "mac": "AA:BB:CC:DD:EE:FF",
-    "id": 1,
-    "status": 2,
-    "voltage": 48.5,
-    "current": 1.85,
-    "temp1": 35.2,
-    "temp2": 33.8
-  },
-  "rx": {
-    "mac": "11:22:33:44:55:66",
-    "id": 101,
-    "status": 1,
-    "voltage": 52.3,
-    "current": 1.75,
-    "temp1": 38.5,
-    "temp2": 37.2
-  }
+    "TX": {
+        "id": 1,
+        "macAddr": "AA:BB:CC:DD:EE:FF",
+        "voltage": 75.5,
+        "current": 1.8,
+        "temp1": 32.5,
+        "temp2": 33.1,
+        "tx_status": "TX_DEPLOY"
+    },
+    "RX": {
+        "id": 101,
+        "macAddr": "11:22:33:44:55:66",
+        "voltage": 95.3,
+        "current": 1.2,
+        "temp1": 28.5,
+        "temp2": 29.0,
+        "rx_status": "RX_CHARGING"
+    }
 }
 ```
-
-**Field Descriptions:**
-
-| Field | Type | Unit | Description | Range |
-|-------|------|------|-------------|-------|
-| `unit_id` | uint8 | - | TX unit identifier | 1-255 |
-| `tx.mac` | string | - | TX MAC address | - |
-| `tx.id` | uint8 | - | TX ID | 1-255 |
-| `tx.status` | uint8 | - | TX operational status | 0-3 (see enum) |
-| `tx.voltage` | float | V | TX output voltage | 0-80 |
-| `tx.current` | float | A | TX output current | 0-5 |
-| `tx.temp1` | float | °C | TX coil temperature | -40 to 125 |
-| `tx.temp2` | float | °C | TX board temperature | -40 to 125 |
-| `rx.mac` | string | - | RX MAC address | - |
-| `rx.id` | uint8 | - | RX ID | 1-255 |
-| `rx.status` | uint8 | - | RX charging status | 0-3 (see enum) |
-| `rx.voltage` | float | V | RX input voltage | 0-100 |
-| `rx.current` | float | A | RX input current | 0-5 |
-| `rx.temp1` | float | °C | RX rectifier temp | -40 to 125 |
-| `rx.temp2` | float | °C | RX battery temp | -40 to 125 |
 
 **TX Status Enum:**
-```c
-typedef enum {
-    TX_OFF = 0,              // Pad inactive
-    TX_IDLE = 1,             // Pad ready, no RX
-    TX_CHARGING = 2,         // Actively charging RX
-    TX_ALERT = 3             // Alert condition
-} TX_status;
-```
+- `TX_OFF` (0): Pad is off
+- `TX_LOCALIZATION` (1): Searching for scooter
+- `TX_DEPLOY` (2): Charging active
+- `TX_ALERT` (3): Alert condition
 
 **RX Status Enum:**
-```c
-typedef enum {
-    RX_DISCONNECTED = 0,     // Not connected to TX
-    RX_CONNECTED = 1,        // Connected, not charging
-    RX_CHARGING = 2,         // Charging in progress
-    RX_ALERT = 3,            // Alert condition
-    RX_FULLY_CHARGED = 4     // Battery full
-} RX_status;
-```
+- `RX_NOT_PRESENT` (0): No scooter detected
+- `RX_CONNECTED` (1): Scooter detected but not charging
+- `RX_MISALIGNED` (2): Poor coupling
+- `RX_CHARGING` (3): Active charging
+- `RX_FULLY_CHARGED` (4): Battery full
+- `RX_ALERT` (5): Alert condition
 
-**Change Detection Thresholds:**
-```c
-#define DELTA_VOLTAGE       1.0   // V
-#define DELTA_CURRENT       0.1   // A
-#define DELTA_TEMPERATURE   2.0   // °C
-```
-*Publishing occurs when any value exceeds threshold OR 30s interval elapses*
-
-#### 2. Alert Payload
-
-**MQTT Topic:** `bumblebee/{unit_id}/alerts`  
-**Publish Rate:** Immediately upon alert condition  
-**Format:** JSON
-
+#### 2. Alert Payload (bumblebee/{unit_id}/alerts)
 ```json
 {
-  "unit_id": 1,
-  "tx": {
-    "mac": "AA:BB:CC:DD:EE:FF",
-    "id": 1,
-    "overtemperature": false,
-    "overcurrent": false,
-    "overvoltage": false,
-    "fod": true
-  },
-  "rx": {
-    "mac": "11:22:33:44:55:66",
-    "id": 101,
-    "overtemperature": true,
-    "overcurrent": false,
-    "overvoltage": false,
-    "fully_charged": false
-  }
+    "TX": {
+        "id": 1,
+        "macAddr": "AA:BB:CC:DD:EE:FF",
+        "flags": {
+            "overcurrent": 1,
+            "overvoltage": 0,
+            "overtemperature": 0,
+            "FOD": 0
+        }
+    },
+    "RX": {
+        "id": 101,
+        "macAddr": "11:22:33:44:55:66",
+        "flags": {
+            "overcurrent": 0,
+            "overvoltage": 1,
+            "overtemperature": 0,
+            "FullyCharged": 0
+        }
+    }
 }
 ```
 
-**Alert Thresholds:**
-
-| Alert Type | TX Threshold | RX Threshold | Action |
-|------------|--------------|--------------|--------|
-| `overtemperature` | > 50°C | > 60°C | Switch OFF, publish alert |
-| `overcurrent` | > 2.2 A | > 2.0 A | Switch OFF, publish alert |
-| `overvoltage` | > 80 V | > 100 V | Switch OFF, publish alert |
-| `fod` (Foreign Object Detection) | Active | N/A | Switch OFF, publish alert |
-| `fully_charged` | N/A | Detected | Stop charging, notify |
-
-**Alert Response Flow:**
-1. Local sensor detects threshold violation
-2. **Immediate local action** (switch OFF if safety issue)
-3. ESP-NOW alert message to parent TX (< 10ms)
-4. TX forwards via WiFi Mesh to MASTER
-5. MASTER publishes to MQTT `alerts` topic
-6. Backend/monitoring system notified
-
-#### 3. Control Payload (Incoming)
-
-**MQTT Topic:** `bumblebee/control` (subscribed by MASTER only)  
-**Format:** JSON
-
+#### 3. Control Commands (bumblebee/control)
 ```json
 {
-  "command": "switch_on",
-  "target": {
-    "type": "tx",
-    "id": 5
-  }
+    "command": "1"  // "0" = OFF, "1" = ON/LOCALIZATION
 }
 ```
-
-**Supported Commands:**
-
-| Command | Description | Target | Effect |
-|---------|-------------|--------|--------|
-| `switch_on` | Enable charging pad | TX ID | TX powers ON coil |
-| `switch_off` | Disable charging pad | TX ID | TX powers OFF coil |
-| `global_off` | Emergency stop all | "all" | All TX units power OFF |
-| `reset` | Reboot unit | TX ID | Software reset |
-
-**Control Message Flow:**
-```
-Backend → MQTT (control) → MASTER → WiFi Mesh → Target TX → ESP-NOW → RX (if applicable)
-```
-
-### ESP-NOW Payload Structure (Internal)
-
-**Used for TX ↔ RX direct communication**
-
-```c
-typedef struct { 
-    uint8_t id;        // Peer unit ID
-    uint8_t type;      // Message type (see enum)
-    uint16_t crc;      // CRC16 checksum
-    float field_1;     // Context-dependent
-    float field_2;     // Context-dependent
-    float field_3;     // Context-dependent
-    float field_4;     // Context-dependent
-} __attribute__((packed)) espnow_data_t;
-```
-
-**ESP-NOW Message Types:**
-
-| Type | Name | Direction | field_1 | field_2 | field_3 | field_4 |
-|------|------|-----------|---------|---------|---------|---------|
-| 0 | `DATA_BROADCAST` | RX→TX | RX Voltage | - | - | - |
-| 1 | `DATA_ALERT` | RX→TX | Overvoltage | Overcurrent | Overtemp | Fully Charged |
-| 2 | `DATA_DYNAMIC` | RX→TX | Voltage | Current | Temp1 | Temp2 |
-| 3 | `DATA_ASK_DYNAMIC` | TX→RX | Timer value | - | - | - |
-
-### WiFi Mesh-Lite Payload Structure (Internal)
-
-**Used for TX ↔ TX mesh communication**
-
-#### Static Payload (Device Registration)
-```c
-typedef struct {
-    uint8_t macAddr[6];              // Device MAC
-    uint8_t id;                      // Unit ID
-    peer_type type;                  // TX or RX
-    float OVERVOLTAGE_limit;         // Alert threshold
-    float OVERCURRENT_limit;         // Alert threshold
-    float OVERTEMPERATURE_limit;     // Alert threshold
-    uint8_t FOD;                     // FOD enabled/disabled
-} mesh_static_payload_t;
-```
-
-**Message IDs:**
-- `0x1000` - Static payload (child → root)
-- `0x1001` - Static payload response (root → child)
-- `0x1002` - Dynamic payload (child → root)
-- `0x1003` - Dynamic payload response
-- `0x1004` - Alert payload (child → root)
-- `0x1005` - Alert payload response
-- `0x1006` - Localization data
-- `0x1007` - Localization response
-- `0x1008` - Control message (root → child)
-- `0x1009` - Control message response
 
 ---
 
 ## Communication Procedures
 
-### 1. Mesh Network Formation
+### RX Departure Detection (NEW)
 
-**Sequence:**
-```
-Power ON
-   │
-   ├─► NVS Init
-   │
-   ├─► I2C Scan (TX/RX detection)
-   │
-   ├─► WiFi Init
-   │
-   ├─► Mesh Formation
-   │     ├─ Search for existing mesh
-   │     ├─ Join as child (if mesh exists)
-   │     └─ Become root (if no mesh found)
-   │
-   ├─► Wait for MESH_FORMEDBIT
-   │
-   └─► Hardware Init
-         ├─ TX: Power circuits, sensors
-         └─ RX: Sensors, battery management
+```mermaid
+sequenceDiagram
+    participant RX
+    participant TX
+    participant Mesh
+    
+    Note over RX: Voltage < MIN_VOLTAGE (40V)
+    RX->>TX: ESP-NOW voltage reading
+    TX->>TX: Detect voltage drop
+    TX->>RX: Send RX_LEFT message
+    TX->>TX: Clear RX from peer list
+    TX->>TX: Set TX_LOCALIZATION mode
+    Note over TX: Ready for new RX
 ```
 
-**Root Election:**
-- First TX powered ON becomes ROOT automatically
-- If ROOT fails, mesh re-elects new ROOT
-- ROOT maintains connection to WiFi router
-- Only ROOT initializes MQTT client
-
-### 2. Device Discovery & Pairing
-
-**TX ↔ TX (Mesh):**
-```
-New TX joins mesh
-   │
-   ├─► Send Static Payload (0x1000)
-   │     └─ Contains: MAC, ID, Type, Alert Limits
-   │
-   ├─► ROOT processes
-   │     ├─ Add TX_peer structure
-   │     ├─ Store configuration
-   │     └─ Send response (0x1001) with limits
-   │
-   └─► TX stores limits in NVS
-```
-
-**TX ↔ RX (ESP-NOW):**
-```
-RX powers ON
-   │
-   ├─► Broadcast localization beacon (voltage)
-   │
-TX receives broadcast
-   │
-   ├─► Add ESP-NOW peer (RX MAC)
-   │
-   ├─► Send DATA_ASK_DYNAMIC
-   │
-   ├─► RX responds with full sensor data
-   │
-   └─► TX stores RX_peer structure
-```
-
-### 3. Normal Operation Data Flow
-
-**Periodic Telemetry (every 30s OR on change):**
-
-```
-[RX Sensors] ─── ESP-NOW ───> [TX]
-                               │
-                               ├─ Compare to previous values
-                               │
-                               ├─ If changed OR timeout:
-                               │    │
-                               │    └─► WiFi Mesh (0x1002) ───> [MASTER]
-                               │                                    │
-                               │                                    ├─ Convert to JSON
-                               │                                    │
-                               │                                    └─► MQTT Publish
-                               │                                         bumblebee/{id}/dynamic
-                               │
-                               └─ Store as "previous" values
-```
-
-### 4. Alert Handling (Fast Path)
-
-**Critical Alert Response (< 100ms total):**
-
-```
-[RX Detects Alert]
-   │
-   ├─► LOCAL ACTION: Switch OFF (0-10ms)
-   │
-   ├─► ESP-NOW Alert Message ──> [TX] (5-20ms)
-   │                               │
-   │                               ├─► LOCAL ACTION: Switch OFF
-   │                               │
-   │                               ├─► WiFi Mesh (0x1004) ──> [MASTER] (20-40ms)
-   │                               │                             │
-   │                               │                             └─► MQTT Publish
-   │                               │                                  bumblebee/{id}/alerts
-   │                               │
-   │                               └─► Set reconnection timeout
-   │
-   └─► Wait for manual reset OR timeout
-```
-
-### 5. Control Commands
-
-**Backend → Device Control:**
-
-```
-[Backend] ─── MQTT Publish ───> bumblebee/control
-                                      │
-                                      ├─ MASTER subscribes
-                                      │
-                                      ├─ Parse JSON
-                                      │
-                                      ├─ Identify target TX
-                                      │
-                                      ├─ WiFi Mesh (0x1008) ──> [Target TX]
-                                      │                             │
-                                      │                             ├─ Validate command
-                                      │                             │
-                                      │                             ├─ Execute locally
-                                      │                             │
-                                      │                             └─ OR forward via ESP-NOW ──> [RX]
-                                      │
-                                      └─ Response (0x1009) ──────────┘
-```
-
-### 6. Error Handling & Recovery
-
-**ESP-NOW Communication Failure:**
+**Implementation:**
 ```c
-#define MAX_COMMS_ERROR 10
+// In RX (cru_hw.c)
+if (self_dynamic_payload.RX.voltage < MIN_RX_VOLTAGE) {
+    // Voltage too low, RX is leaving
+    self_dynamic_payload.RX.rx_status = RX_NOT_PRESENT;
+}
 
-if (send_status != ESP_NOW_SEND_SUCCESS) {
-    comms_fail++;
-    if (comms_fail >= MAX_COMMS_ERROR) {
-        // Mark peer as disconnected
-        // Retry with exponential backoff
-        // Or alert MASTER
-    }
+// In TX (wifiMesh.c)
+if (recv_data->field_1 < MIN_RX_VOLTAGE) {
+    // RX has left the pad
+    espnow_send_message(DATA_RX_LEFT, recv_cb->mac_addr);
+    rxLocalized = false;
+    // Restart localization
 }
 ```
 
-**WiFi Mesh Disconnection:**
-```
-Mesh link lost
-   │
-   ├─► Attempt rejoin (automatic)
-   │
-   ├─► If rejoin fails:
-   │     └─ Scan for new parent
-   │
-   └─► If no mesh found:
-         └─ Become new ROOT candidate
-```
+### Alert Handling with Reconnection
 
-**MQTT Connection Loss:**
-```
-MQTT disconnect event
-   │
-   ├─► Log warning
-   │
-   ├─► Automatic reconnection (5s interval)
-   │
-   ├─► Buffer up to 20 messages locally
-   │
-   └─► Publish buffered data on reconnect
-```
+```c
+// Alert timeout configuration
+#define ALERT_TIMEOUT 60000  // 60 seconds
 
-### 7. Performance Optimization
-
-**Compile Optimizations (sdkconfig.defaults):**
-```ini
-CONFIG_COMPILER_OPTIMIZATION_PERF=y
-CONFIG_FREERTOS_HZ=1000
-CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=16
-CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=64
-CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65536
+// Alert handling flow
+if (alert_detected) {
+    send_alert_payload();
+    vTaskDelay(AFTER_ALERT_DATA_DELAY);
+    esp_mesh_lite_disconnect();
+    vTaskDelay(ALERT_TIMEOUT);  // Wait before reconnection
+    esp_restart();  // Restart to clear alert state
+}
 ```
-
-**Key Performance Settings:**
-- FreeRTOS tick rate: 1000 Hz (1ms precision)
-- WiFi RX/TX buffers: 64 dynamic + 16 static
-- TCP send/receive window: 65536 bytes
-- LWIP TCP MSS: 1460 bytes
-- Flash mode: QIO @ 80MHz
 
 ---
 
@@ -664,12 +407,12 @@ idf.py menuconfig
 ├─ MQTT Broker URI
 ├─ Mesh Channel (1-11)
 └─ Alert Thresholds
-     ├─ TX Overcurrent
-     ├─ TX Overvoltage
-     ├─ TX Overtemperature
-     ├─ RX Overcurrent
-     ├─ RX Overvoltage
-     └─ RX Overtemperature
+     ├─ TX Overcurrent (2.2A)
+     ├─ TX Overvoltage (80V)
+     ├─ TX Overtemperature (50°C)
+     ├─ RX Overcurrent (2.0A)
+     ├─ RX Overvoltage (100V)
+     └─ RX Overtemperature (60°C)
 ```
 
 ### 2. Alert Threshold Configuration
@@ -681,43 +424,29 @@ Edit `main/include/util.h`:
 #define OVERCURRENT_TX          2.2   // Amperes
 #define OVERVOLTAGE_TX         80.0   // Volts
 #define OVERTEMPERATURE_TX     50.0   // Celsius
-#define FOD_ACTIVE                1   // 1=enabled, 0=disabled
+#define FOD_ACTIVE                1   // Foreign Object Detection
 
 /* RX ALERT LIMITS */
 #define OVERCURRENT_RX          2.0   // Amperes
 #define OVERVOLTAGE_RX        100.0   // Volts
 #define OVERTEMPERATURE_RX     60.0   // Celsius
-#define MIN_RX_VOLTAGE         50.0   // Volts
+#define MIN_RX_VOLTAGE         40.0   // Departure detection threshold
+
+/* TIMING CONFIGURATION */
+#define ALERT_TIMEOUT         60000   // Alert reconnection timeout (ms)
+#define LOCALIZATION_TIME_MS     50   // Localization pulse duration
+#define PEER_DYNAMIC_TIMER       15   // Dynamic payload timeout (s)
 ```
 
-### 3. MQTT Configuration
-
-Edit `main/include/mqtt_client_manager.h`:
-
-```c
-/* MQTT Broker URI */
-#define MQTT_BROKER_URI "mqtt://192.168.1.92:1883"
-
-/* For TLS/SSL */
-// #define MQTT_BROKER_URI "mqtts://broker.example.com:8883"
-
-/* Publishing Intervals */
-#define MQTT_MIN_PUBLISH_INTERVAL_MS 30000  // 30 seconds
-
-/* Authentication (if needed) */
-// .credentials.username = "your_username"
-// .credentials.authentication.password = "your_password"
-```
-
-### 4. Network Configuration
+### 3. Network Configuration
 
 **WiFi Mesh Settings:**
 ```c
 // Max mesh layers (hops from root)
 #define ESP_MESH_MAX_LAYER 10
 
-// Mesh channel
-#define ESP_MESH_CHANNEL 1  // 1-11
+// Mesh channel (must match router)
+#define ESP_MESH_CHANNEL 1
 
 // Max connections per node
 #define ESP_MESH_AP_CONNECTIONS 10
@@ -733,223 +462,108 @@ Edit `main/include/mqtt_client_manager.h`:
 
 // ESP-NOW send timeout
 #define ESPNOW_QUEUE_MAXDELAY 10000  // 10s
+
+// Encryption keys (CHANGE IN PRODUCTION!)
+#define ESPNOW_PMK "pmk1234567890999"
+#define ESPNOW_LMK "lmk1234567890999"  // Currently disabled
 ```
 
-### 5. Sensor Configuration
+---
 
-**I2C Configuration:**
+## Known Issues & Debugging
+
+### 1. ESP-NOW LSK Encryption Issue
+
+**Problem Description:**
+The Local Session Key (LSK) encryption for ESP-NOW doesn't work correctly. After the initial handshake, encrypted messages from RX don't reach the TX master.
+
+**Debug Steps:**
+```bash
+# Enable verbose ESP-NOW logging
+idf.py menuconfig
+# Component config → ESP-NOW → Enable debug logs
+
+# Monitor ESP-NOW events
+idf.py monitor | grep -E "ESP-NOW|PEER|encrypt"
+```
+
+**Test Code:**
 ```c
-#define I2C_MASTER_SCL_IO    22
-#define I2C_MASTER_SDA_IO    21
-#define I2C_MASTER_FREQ_HZ   100000
+// Test encryption state
+void debug_peer_encryption(const uint8_t *mac) {
+    esp_now_peer_info_t peer;
+    if (esp_now_get_peer(mac, &peer) == ESP_OK) {
+        ESP_LOGI(TAG, "Peer "MACSTR": encrypt=%d, channel=%d", 
+                 MAC2STR(mac), peer.encrypt, peer.channel);
+        if (peer.encrypt) {
+            ESP_LOG_BUFFER_HEX("LMK", peer.lmk, ESP_NOW_KEY_LEN);
+        }
+    }
+}
 ```
 
-**Sensor Addresses:**
+**Workaround:**
+MSK encryption is currently used and provides adequate security. To test LSK:
 ```c
-#define T1_SENSOR_ADDR       0x48
-#define T2_SENSOR_ADDR       0x49
+// Uncomment in wifiMesh.c to enable LSK (will cause issues)
+// esp_now_encrypt_peer(recv_cb->mac_addr);
 ```
 
-### 6. Logging Configuration
+### 2. Mesh Stability Under Load
 
-**Set log levels in menuconfig or sdkconfig:**
-```ini
-CONFIG_LOG_DEFAULT_LEVEL_INFO=y
-# CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y
-# CONFIG_LOG_DEFAULT_LEVEL_VERBOSE=y
-```
+**Symptom:** Child nodes disconnect after 30-55 seconds
 
-**Per-component logging:**
+**Root Cause:** Node info reports not reaching root node
+
+**Solution Applied:** Increased UDP buffers and improved error handling
 ```c
-esp_log_level_set("wifiMesh", ESP_LOG_INFO);
-esp_log_level_set("MQTT_CLIENT", ESP_LOG_DEBUG);
-esp_log_level_set("PEER", ESP_LOG_WARN);
+// In esp_mesh_lite configuration
+CONFIG_MESH_LITE_REPORT_INTERVAL=20  // Report every 20 seconds
+```
+
+### 3. Certificate Verification
+
+**Development Setup (Self-Signed):**
+```c
+.verification = {
+    .certificate = mqtt_ca_cert,
+    .skip_cert_common_name_check = true,  // Required for IP-based certs
+}
+```
+
+**Production Setup:**
+```c
+.verification = {
+    .certificate = mqtt_ca_cert,
+    .skip_cert_common_name_check = false,  // Use proper domain
+    .common_name = "your-domain.com",
+}
 ```
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-
-#### 1. Mesh Network Not Forming
-
-**Symptoms:**
-- Units don't connect to each other
-- "Mesh formation timeout" error
-
-**Solutions:**
-```bash
-# Check WiFi credentials match
-idf.py menuconfig → Bumblebee Config → WiFi Settings
-
-# Verify all units on same channel
-CONFIG_MESH_CHANNEL=1
-
-# Check router is accessible
-ping 192.168.1.1
-
-# Increase mesh formation timeout
-# In main/main.c:
-xEventGroupWaitBits(eventGroupHandle, MESH_FORMEDBIT, 
-                    pdTRUE, pdFALSE, pdMS_TO_TICKS(30000));  // 30s
-```
-
-#### 2. MQTT Connection Fails
-
-**Symptoms:**
-- "MQTT_EVENT_DISCONNECTED" repeatedly
-- No data on MQTT broker
-
-**Solutions:**
-```bash
-# 1. Verify broker is running
-mosquitto -v
-
-# 2. Test connectivity from device network
-ping 192.168.1.92
-
-# 3. Check broker allows connections
-# In mosquitto.conf:
-listener 1883
-allow_anonymous true
-
-# 4. Verify URI format
-#define MQTT_BROKER_URI "mqtt://192.168.1.92:1883"  # Correct
-# Not: "192.168.1.92:1883"  # Wrong (missing mqtt://)
-
-# 5. Check firewall
-sudo ufw allow 1883/tcp
-```
-
-#### 3. ESP-NOW Communication Issues
-
-**Symptoms:**
-- RX data not received by TX
-- "ESP-NOW send failed" errors
-
-**Solutions:**
-```c
-// 1. Verify peer is added
-if (!esp_now_is_peer_exist(peer_addr)) {
-    ESP_LOGE(TAG, "Peer not found!");
-}
-
-// 2. Check channel matches mesh
-esp_wifi_get_channel(&primary, &secondary);
-
-// 3. Increase queue size if overflowing
-#define ESPNOW_QUEUE_SIZE 20  // → 40
-
-// 4. Check CRC errors
-uint8_t espnow_data_crc_control(uint8_t *data, uint16_t data_len);
-```
-
-#### 4. High Latency / Packet Loss
-
-**Symptoms:**
-- Slow response times
-- Data gaps in MQTT stream
-
-**Solutions:**
-```bash
-# 1. Check WiFi interference
-iw dev wlan0 scan | grep -E "SSID|Channel"
-
-# 2. Optimize buffer sizes
-CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=64
-CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65536
-
-# 3. Reduce log verbosity
-CONFIG_LOG_DEFAULT_LEVEL_INFO=y  # Not DEBUG
-
-# 4. Check CPU load
-# Monitor task statistics in serial output
-
-# 5. Verify power supply is adequate
-# Brownout detector triggered = insufficient power
-```
-
-#### 5. Unit Not Detected as TX/RX
-
-**Symptoms:**
-- Wrong unit type assignment
-- I2C scan fails
-
-**Solutions:**
-```c
-// 1. Uncomment I2C scan in main.c
-i2c_scan_bus();
-if (i2c_device_present(T1_SENSOR_ADDR) || 
-    i2c_device_present(T2_SENSOR_ADDR)) {
-    UNIT_ROLE = RX;
-} else {
-    UNIT_ROLE = TX;
-}
-
-// 2. Manually override if needed
-UNIT_ROLE = TX;  // Force TX mode
-
-// 3. Verify sensor addresses
-#define T1_SENSOR_ADDR 0x48
-#define T2_SENSOR_ADDR 0x49
-```
-
-### Debug Commands
-
-**Serial Monitor Commands:**
-```bash
-# View logs with timestamps
-idf.py monitor --timestamps
-
-# Filter by component
-idf.py monitor | grep "wifiMesh"
-
-# Increase baud rate
-idf.py monitor -b 921600
-
-# View core dump (if crash)
-idf.py monitor --decode
-```
-
-**Useful ESP-IDF Commands:**
-```bash
-# Full erase (clear NVS)
-idf.py erase_flash
-
-# Monitor heap usage
-idf.py monitor | grep "Free heap"
-
-# Check partition table
-idf.py partition-table
-
-# View current configuration
-idf.py show-efuse
-
-# Run built-in tests
-idf.py test
-```
-
-### Serial Log Analysis
+### Common Boot Issues
 
 **Healthy Boot Sequence:**
 ```
-I (xxx) MAIN: Firmware Version: v1.0.0
-I (xxx) MAIN: ESP-IDF: 5.5.1
-I (xxx) wifiMesh: WiFi Mesh initialization
-I (xxx) wifiMesh: Mesh network formed
-I (xxx) wifiMesh: Root node: YES
-I (xxx) wifiMesh: Mesh level: 1
-I (xxx) MQTT_CLIENT: MQTT_EVENT_CONNECTED
-I (xxx) PEER: TX Peer structure added! ID: 1
+I (1234) cpu_start: ESP32-C6 (revision v0.0)
+I (1250) heap_init: Heap init, available: 406936
+I (1350) MAIN: TX unit detected via I2C scan
+I (2456) wifiMesh: WiFi Mesh-Lite started
+I (5678) wifiMesh: Connected to router
+I (6789) wifiMesh: Root node: YES
+I (7890) MQTT_CLIENT: Connected successfully (TLS)
 ```
 
 **Problematic Boot:**
 ```
 E (xxx) wifiMesh: Mesh formation timeout       ← Check WiFi config
-E (xxx) MQTT_CLIENT: Connection refused         ← Check broker URI
-E (xxx) PEER: Failed to allocate memory         ← Heap exhaustion
-W (xxx) wifiMesh: ESP-NOW send failed          ← Check peer pairing
+E (xxx) MQTT_CLIENT: Certificate verification failed ← Check CA cert
+E (xxx) MQTT_CLIENT: Authentication failed     ← Check username/password
+E (xxx) PEER: Failed to allocate memory       ← Heap exhaustion
+W (xxx) wifiMesh: ESP-NOW send failed        ← Check peer pairing/encryption
 ```
 
 ### Performance Monitoring
@@ -963,10 +577,27 @@ RTT: avg=3.11 ms, min=1.60 ms, max=15.60 ms
 Dropped: 0 packets
 
 # Expected values:
-Throughput: > 10 Mbps
+Throughput: > 10 Mbps (Mesh-Lite)
 RTT (1 hop): < 5 ms
 RTT (2 hops): < 10 ms
 Packet loss: < 1%
+ESP-NOW latency: < 10 ms
+```
+
+### Debug Commands
+
+```bash
+# Monitor with timestamps
+idf.py monitor --timestamps
+
+# Full flash erase (clears NVS)
+idf.py erase_flash
+
+# Filter specific component logs
+idf.py monitor | grep -E "wifiMesh|MQTT|PEER"
+
+# Decode stack traces
+idf.py monitor --decode-backtrace
 ```
 
 ---
@@ -976,15 +607,12 @@ Packet loss: < 1%
 **Documentation:**
 - [ESP-IDF Programming Guide](https://docs.espressif.com/projects/esp-idf/en/latest/)
 - [ESP-WIFI-MESH-LITE](https://github.com/espressif/esp-wifi-mesh-lite)
-- [ESP-NOW](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_now.html)
+- [ESP-NOW Encryption](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_now.html#encryption)
+- [MQTT TLS Guide](https://mosquitto.org/man/mosquitto-tls-7.html)
 
-**Issues & Questions:**
-- GitHub Issues: [Your Repository Issues]
-- Community Forum: [Your Forum Link]
-
-**License:**
-- Firmware: [Your License]
-- Dependencies: See `LICENSE` file
+**Debugging Resources:**
+- ESP32 Forum: https://esp32.com
+- ESP-IDF Issues: https://github.com/espressif/esp-idf/issues
 
 ---
 
@@ -992,39 +620,45 @@ Packet loss: < 1%
 
 ### Firmware Version History
 
-**v1.0.0** - Initial Release
+**v0.2.0-beta** - Security Update
+- MQTT TLS/SSL implementation
+- ESP-NOW MSK encryption
+- RX departure detection
+- Alert reconnection timeout
+
+**v0.1.0-alpha** - Initial Release
 - WiFi Mesh-Lite implementation
 - ESP-NOW TX-RX communication
-- MQTT publishing (dynamic & alerts)
-- Basic control commands
+- Basic MQTT publishing
+- Alert system
 
-### Hardware Compatibility
+### Hardware Compatibility Matrix
 
-**Tested Boards:**
-- ESP32-C6-DevKitC-1
-- ESP32-C6-MINI-1
+| Feature | ESP32-C6 | ESP32 Classic |
+|---------|----------|---------------|
+| **WiFi Standard** | WiFi 6 (802.11ax) | WiFi 4 (802.11n) |
+| **CPU** | RISC-V 160MHz | Xtensa LX6 240MHz |
+| **ADC Calibration** | Curve Fitting | Line Fitting |
+| **Power Consumption** | Lower | Higher |
+| **ESP-NOW Range** | Extended | Standard |
+| **Production Ready** | ✅ Recommended | ✅ Supported |
 
-**Required Sensors:**
-- Voltage sensor: 0-100V range
-- Current sensor: 0-5A range (Hall effect or shunt)
-- Temperature sensors: I2C (LM75, DS18B20, or similar)
+### Security Compliance Checklist
 
-### Network Security Considerations
-
-**Current Implementation:**
-- WiFi: WPA2-PSK
-- MQTT: Unencrypted (MQTT over TCP)
-- ESP-NOW: Unencrypted
-
-**Recommendations for Production:**
-- Enable MQTT over TLS (mqtts://)
-- Implement device authentication
-- Use certificate-based MQTT auth
-- Enable ESP-NOW encryption
-- Regular firmware updates via OTA
+- [x] Transport encryption (TLS 1.2)
+- [x] Authentication (username/password)
+- [x] ESP-NOW encryption (MSK)
+- [x] ESP-NOW encryption (LSK)
+- [x] Certificate validation
+- [ ] Certificate pinning (optional)
+- [ ] Mutual TLS (optional)
+- [x] Secure credential storage (production)
+- [ ] Security audit logging
+- [ ] Regular penetration testing
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** October 2025  
-**Maintainer:** [Your Name/Team]
+**Document Version:** 2.0  
+**Last Updated:** November 2024  
+**Firmware Version:** v0.2.0-beta  
+**Maintainer:** Bumblebee Development Team

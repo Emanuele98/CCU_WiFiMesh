@@ -649,7 +649,6 @@ static void add_peer_if_needed(const uint8_t *peer_addr)
 }
 
 // avoid for now as creates issues
-/*
 static void esp_now_encrypt_peer(const uint8_t *peer_addr)
 {
     esp_now_peer_info_t *peer = malloc(sizeof(esp_now_peer_info_t));
@@ -663,9 +662,9 @@ static void esp_now_encrypt_peer(const uint8_t *peer_addr)
     peer->encrypt = true;
     memcpy(peer->lmk, ESPNOW_LMK, ESP_NOW_KEY_LEN);
     ESP_ERROR_CHECK( esp_now_mod_peer(peer) );
-    free(peer);
+    free(peer); 
 }
-*/
+
 
 /* ESPNOW sending or receiving callback function is called in WiFi task.
  * Users should not do lengthy operations from this task. Instead, post
@@ -849,6 +848,8 @@ static void espnow_task(void *pvParameter)
                                         p->RX_status = RX_CHARGING;
                                         ESP_LOGI(TAG, "RX peer position updated to %d", p->position);
                                     }
+                                    // master encrypt the peer after sending this first unicast message (as it needs to be encrypted on both sides!)
+                                    esp_now_encrypt_peer(recv_cb->mac_addr);
                                 }
                             }
                             //Case 3 - I am TX - am I active? yes then tell master - no then discard
@@ -862,8 +863,8 @@ static void espnow_task(void *pvParameter)
                                 // ask for dynamic data 
                                 espnow_send_message(DATA_ASK_DYNAMIC, recv_cb->mac_addr);
                                 write_STM_command(TX_DEPLOY);
-                                // master encrypt the peer after sending this first unicast message (as it needs to be encrypted on both sides!)
-                                //esp_now_encrypt_peer(recv_cb->mac_addr);
+                                // TX encrypt the peer after sending this first unicast message (as it needs to be encrypted on both sides!)
+                                esp_now_encrypt_peer(recv_cb->mac_addr);
                             }
                         }   
                     }
@@ -873,7 +874,7 @@ static void espnow_task(void *pvParameter)
                         // Save peer and communicate via ESP-NOW
                         add_peer_if_needed(recv_cb->mac_addr);
                         //RX encrypts the TX peer after receiving this first unicast message
-                        //esp_now_encrypt_peer(recv_cb->mac_addr);
+                        esp_now_encrypt_peer(recv_cb->mac_addr);
                         //save TX parent MAC addr
                         memcpy(TX_parent_mac, recv_cb->mac_addr, ETH_HWADDR_LEN);
                         DynTimeout = recv_data->field_1;

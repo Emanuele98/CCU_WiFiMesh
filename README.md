@@ -33,7 +33,7 @@ Bumblebee is a distributed wireless charging network firmware that enables intel
 
 ---
 
-## 🚦 Current Status (v0.1.0-alpha)
+## 🚦 Current Status (v0.2.0)
 
 ### ✅ Implemented Features
 - Hardware sensor readings (voltage, current, temperature)
@@ -44,15 +44,15 @@ Bumblebee is a distributed wireless charging network firmware that enables intel
 - Alert system with immediate local response
 - MQTT integration for cloud visualization
 - Real-time dashboard monitoring
+- RX leaving charging pad detection
+- Alert reconnection timeout
+- Security features (ESP-NOW encryption, MQTT TLS)
 
 ### ⚠️ Known Limitations
-- RX leaving charging pad not yet handled
 - Fully charged scenario incomplete
 - WiFi power saving features disabled for performance
-- Reconnection intervals after alerts are fixed (customizable but not dynamic)
 - Unit IDs not yet persistent in NVS (hardcoded in `unitID.h`)
 - OTA updates not implemented
-- Security features pending (ESP-NOW encryption, MQTT TLS)
 
 ### 🔄 Testing Required
 Edge cases and real-world scenarios need validation before production deployment.
@@ -253,7 +253,7 @@ idf.py menuconfig
 ### MQTT Broker
 ```c
 // Edit main/include/mqtt_client_manager.h
-#define MQTT_BROKER_URI "mqtt://15.188.29.195:1883"
+#define MQTT_BROKER_URI "mqtts://15.188.29.195:8883"
 ```
 
 ---
@@ -324,6 +324,6 @@ For questions and support:
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** October 2025  
-**Firmware Version:** v0.1.0-alpha
+**Document Version:** 2.0  
+**Last Updated:** November 2025  
+**Firmware Version:** v0.2.0
