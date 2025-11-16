@@ -31,6 +31,7 @@ static uint8_t TX_parent_mac[ETH_HWADDR_LEN] = {0};
 
 // Declarations
 static void espnow_send_message(espnow_message_type mdgType, uint8_t* mac_addr);
+static void espnow_delete(uint8_t* mac_addr);
 
 /*******************************************************
  *                Function Definitions
@@ -94,8 +95,8 @@ static esp_err_t static_to_root_raw_msg_process(uint8_t *data, uint32_t len,
     }
 
     mesh_static_payload_t *received_payload = (mesh_static_payload_t *)data;
-    ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
-             received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
+    //ESP_LOGI(TAG, "Received static payload from ID: %d, Type: %d, MAC: "MACSTR, 
+    //         received_payload->id, received_payload->type, MAC2STR(received_payload->macAddr));
 
     // Set response to set limits (from master to child)
     *out_len = sizeof(mesh_static_payload_t);
@@ -333,6 +334,11 @@ static esp_err_t localization_to_root_raw_msg_process(uint8_t *data, uint32_t le
     struct RX_peer *p = RX_peer_find_by_mac(received_payload->macAddr);
     if (p != NULL)
     {
+        if (p->position != 0 && received_payload->position != 0)
+        {
+            ESP_LOGW(TAG, "Problem, RX was already localized - abort");
+            return ESP_OK;
+        }
         p->position = received_payload->position;
         if (p->position)
             p->RX_status = RX_CHARGING;
@@ -521,6 +527,7 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
                 send_localization_payload(0, mac);
             // advise RX
             espnow_send_message(DATA_RX_LEFT, mac);
+            espnow_delete(mac);
 
             //dynamic payload reset
             self_dynamic_payload.RX.id = 0;
@@ -741,6 +748,23 @@ static void espnow_send_message(espnow_message_type mdgType, uint8_t* mac_addr)
         ESP_LOGE(TAG, "Could not take send semaphore!");
 }
 
+static void espnow_delete(uint8_t* mac_addr)
+{
+    if (mac_addr == NULL) {
+        return;
+    }
+
+    // Check if peer exists
+    if (esp_now_is_peer_exist(mac_addr)) {
+        esp_err_t ret = esp_now_del_peer(mac_addr);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Deleted espNOw peer: "MACSTR"", MAC2STR(mac_addr));
+        } else {
+            ESP_LOGE(TAG, "Failed to delete peer "MACSTR": %s", 
+                    MAC2STR(mac_addr), esp_err_to_name(ret));
+        }
+    }
+}
 
 static void espnow_task(void *pvParameter)
 {
@@ -845,20 +869,26 @@ static void espnow_task(void *pvParameter)
                                 // TX will tell the RX via ESP-NOW
                                 if (self_dynamic_payload.TX.tx_status == TX_LOCALIZATION)
                                 {
+                                    //update RX peer position
+                                    struct RX_peer* p = RX_peer_find_by_mac(recv_cb->mac_addr);
+                                    if (p != NULL)
+                                    {
+                                        if (p->position != 0)
+                                        {
+                                            ESP_LOGW(TAG, "Problem, RX was already localized - abort");
+                                            free(recv_data);
+                                            break;
+                                        }
+                                        p->position = UNIT_ID; //position same as ID for RX
+                                        p->RX_status = RX_CHARGING;
+                                        ESP_LOGI(TAG, "RX peer position updated to %d", p->position);
+                                    }
                                     ESP_LOGI(TAG, "RX has been located to this TX (which is also the master)!");
                                     write_STM_command(TX_DEPLOY);
                                     // Save peer and communicate via ESP-NOW
                                     add_peer_if_needed(recv_cb->mac_addr);
                                     // ask for dynamic data 
                                     espnow_send_message(DATA_ASK_DYNAMIC, recv_cb->mac_addr);
-                                    //update RX peer position
-                                    struct RX_peer* p = RX_peer_find_by_mac(recv_cb->mac_addr);
-                                    if (p != NULL)
-                                    {
-                                        p->position = UNIT_ID; //position same as ID for RX
-                                        p->RX_status = RX_CHARGING;
-                                        ESP_LOGI(TAG, "RX peer position updated to %d", p->position);
-                                    }
                                     vTaskDelay(500);
                                     // master encrypt the peer after sending this first unicast message (as it needs to be encrypted on both sides!)
                                     esp_now_encrypt_peer(recv_cb->mac_addr);
@@ -897,6 +927,7 @@ static void espnow_task(void *pvParameter)
                     {
                         //ESP_LOGW(TAG, "RX has left received from: "MACSTR"", MAC2STR(recv_cb->mac_addr));
                         rxLocalized = false;
+                        espnow_delete(recv_cb->mac_addr);
                     }
                     else if(msg_type == DATA_DYNAMIC)
                     {
@@ -1129,7 +1160,10 @@ static void mesh_lite_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGI(TAG, "Node left: Level %d, MAC: "MACSTR", IP: %s", node_info->level, MAC2STR(node_info->mac_addr), inet_ntoa(node_info->ip_addr));
             // Remove node from list
             if (is_root_node)
+            {
                 peer_delete(node_info->mac_addr);
+                espnow_delete(node_info->mac_addr);
+            }
             break;
         case ESP_MESH_LITE_EVENT_NODE_CHANGE:
             ESP_LOGW(TAG, "<ESP_MESH_LITE_EVENT_NODE_CHANGE>");

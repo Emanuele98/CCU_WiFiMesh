@@ -233,6 +233,23 @@ struct RX_peer* RX_peer_find_by_position(int8_t position)
     return result;
 }
 
+void removeRelativeRX(int8_t pos)
+{
+    // Atomic: Find and remove in one critical section
+    WITH_RX_PEERS_LOCKED {
+        struct RX_peer *p;
+        SLIST_FOREACH(p, &RX_peers, next) {
+            if (p->position == pos) 
+            {
+                p->position = 0;
+                p->RX_status = RX_CONNECTED;
+                break;
+            }
+        }
+    }
+    
+}
+
 void removeFromRelativeTX(int8_t pos)
 {
     // Atomic: Find and remove in one critical section
@@ -281,6 +298,8 @@ void peer_delete(uint8_t *mac)
         if (!SLIST_EMPTY(&TX_peers)) {
             SLIST_FOREACH(p, &TX_peers, next) {
                 if (memcmp(p->MACaddress, mac, ETH_HWADDR_LEN) == 0) {
+                    //reset relative RX (if any)
+                    removeRelativeRX(p->position);
                     SLIST_REMOVE(&TX_peers, p, TX_peer, next);
                     TX_p = p;  // Store for freeing outside lock
                     break;

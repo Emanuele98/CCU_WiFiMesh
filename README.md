@@ -51,7 +51,6 @@ Bumblebee is a distributed wireless charging network firmware that enables intel
 ### ⚠️ Known Limitations
 - Fully charged scenario incomplete
 - WiFi power saving features disabled for performance
-- Unit IDs not yet persistent in NVS (hardcoded in `unitID.h`) //todo done!
 - OTA updates not implemented
 
 ### 🔄 Testing Required
@@ -79,10 +78,11 @@ Edge cases and real-world scenarios need validation before production deployment
    ```
 
 3. **Configure Unit**
-   ```c
-   // Edit main/include/unitID.h //todo change to NVS
-   #define UNIT_ID 1  // Unique ID per unit
-   ```
+- Configure flash_unit_id.py with your ESP-IDF path
+- Use Ctrl+, and look for esp-idf
+- Change 'C:\\Users\\degan\\esp\\v5.5.1\\esp-idf' to your path
+- Use Ctrl+Shift+P and run Task > Flash Unit ID
+- Set unique UNIT_ID for each device (must be done once!)
 
 4. **Build & Flash**
    ```bash

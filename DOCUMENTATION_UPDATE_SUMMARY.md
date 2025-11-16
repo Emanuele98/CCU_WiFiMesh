@@ -34,17 +34,19 @@ This documentation update reflects the transition from v0.1.0-alpha to v0.2.0 wi
 - Bi-directional encryption (both sides encrypt peers)
 - Enhanced security for peer-to-peer communication
 
-### 4. ✅ Multi-Board Support
+### 4. ✅ NVS Unit ID persistence
+**Implementation:**
+- Unit ID stored in NVS
+- Retained across reboots and power cycles
+- Ensures consistent identification of TX/RX units
+- Python script with VSCode task for easy ID assignment during setup
+
+### 5. ✅ Multi-Board Support
 **Hardware Compatibility:**
 - ESP32-C6: Optimized for WiFi 6, lower power consumption
 - ESP32 Classic: Proven stability, widely available
 - Automatic detection via `idf.py set-target`
 - VSCode ESP-IDF extension handles board selection automatically
-
-## 🔐 ESP-NOW LSK Encryption - SOLVED
-
-### The Solution
-The LSK encryption issue was successfully resolved. The problem was that **peer encryption must be established on BOTH sides** of the communication.
 
 ### Correct Implementation
 ```c
@@ -62,12 +64,6 @@ if (first_unicast_received) {
     esp_now_encrypt_peer(TX_mac_addr);  // ← This was already present
 }
 ```
-
-### Key Learning
-ESP-NOW LSK encryption requires:
-1. Both peers must add each other to their peer list
-2. Both peers must call `esp_now_encrypt_peer()` with the same LMK
-3. The encryption modification (`esp_now_mod_peer()`) works perfectly when done on both sides
 
 ## 🔒 Security Configuration
 
@@ -113,7 +109,6 @@ Recommended:
 1. **README.md**
    - Added security badges
    - Updated feature list with complete security implementation
-   - Removed LSK as known issue (now working)
    - Added board compatibility information
 
 2. **README-FWextensive.md**
@@ -216,15 +211,12 @@ Recommended:
 1. Deploy security updates to all devices
 2. Rotate all default passwords
 3. Test production deployment
-4. Verify LSK encryption on all units
 
 ### Future Improvements
-1. ~~Fix ESP-NOW LSK encryption issue~~ ✅ COMPLETED
-2. Implement OTA updates
-3. Add certificate auto-renewal
-4. Implement unit ID persistence in NVS
-5. Add fully charged detection logic
-6. Enable WiFi power saving (after testing)
+1. Implement OTA updates
+3. Add fully charged detection logic
+3. Enable WiFi power saving (after testing)
+4. Add certificate auto-renewal
 
 ## 📈 Current System Status
 

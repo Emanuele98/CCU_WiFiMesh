@@ -52,9 +52,11 @@ cd bumblebee-mesh
 
 #### 2. Configure Your Unit
 
-Edit `main/include/unitID.h` to set your unit ID: //todo change to NVS!
-```c
-#define UNIT_ID 1  // Change to unique ID (1-255)
+- Configure flash_unit_id.py with your ESP-IDF path
+- Use Ctrl+, and look for esp-idf
+- Change 'C:\\Users\\degan\\esp\\v5.5.1\\esp-idf' to your path
+- Use Ctrl+Shift+P and run Task > Flash Unit ID
+- Set unique UNIT_ID for each device (must be done once!)
 ```
 
 Update WiFi credentials in menuconfig:
@@ -105,6 +107,7 @@ I (XXX) MAIN:   Firmware Version: v0.2.0
 I (XXX) MAIN:   Build Date: YYYY-MM-DD HH:MM:SS
 I (XXX) MAIN:   ESP-IDF: 5.5.1
 I (XXX) MAIN: ========================================
+W (XXX) UNIT: Unit ID: n
 I (XXX) MAIN: TX/RX unit detected via I2C scan
 I (XXX) wifiMesh: Mesh network formed
 I (XXX) MQTT_CLIENT: Connected to broker (TLS)
@@ -396,16 +399,13 @@ if (alert_detected) {
 
 **menuconfig Options:**
 ```bash
-idf.py menuconfig
 
 # Navigate to:
-# Component config → Bumblebee Configuration
+# util.h → Bumblebee Configuration
 
-├─ Unit ID (1-255)
 ├─ Router SSID
 ├─ Router Password
 ├─ MQTT Broker URI
-├─ Mesh Channel (1-11)
 └─ Alert Thresholds
      ├─ TX Overcurrent (2.2A)
      ├─ TX Overvoltage (80V)
