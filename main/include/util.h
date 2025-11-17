@@ -40,7 +40,7 @@
 
 /* ALERTS LIMITS TX */
 #define OVERCURRENT_TX                      2.2
-#define OVERVOLTAGE_TX                      80
+#define OVERVOLTAGE_TX                      85
 #define OVERTEMPERATURE_TX                  50
 #define FOD_ACTIVE                          1
 
@@ -51,7 +51,7 @@
 #define MIN_RX_VOLTAGE                      40  //60
 
 /* LOC TIMING */
-#define LOCALIZATION_TIME_MS                50     //milliseconds
+#define LOCALIZATION_TIME_MS                500     //milliseconds
 
 /* DYNAMIC PAYLOAD MAX TIMING */
 #define PEER_DYNAMIC_TIMER                  15      //15s

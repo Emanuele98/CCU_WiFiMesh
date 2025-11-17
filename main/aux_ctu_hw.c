@@ -240,13 +240,13 @@ esp_err_t write_STM_command(TX_status command)
             self_dynamic_payload.TX.tx_status = TX_DEPLOY;
             strip_misalignment = strip_enable = false;
             strip_charging = true;
-            //ESP_LOGW(TAG, "DEPLOY");
+            ESP_LOGW(TAG, "DEPLOY");
         }
         else if (command == TX_LOCALIZATION)
         {
             cJSON_AddStringToObject(root, "mode", "localization");
             self_dynamic_payload.TX.tx_status = TX_LOCALIZATION;
-            //ESP_LOGW(TAG, "LOC");
+            ESP_LOGW(TAG, "LOC");
         }
         else if (command == TX_OFF)
         {
@@ -254,7 +254,7 @@ esp_err_t write_STM_command(TX_status command)
             strip_misalignment = strip_charging = false;
             strip_enable = true;
             self_dynamic_payload.TX.tx_status = TX_OFF;
-            //ESP_LOGW(TAG, "OFF");
+            ESP_LOGW(TAG, "OFF");
         }
 
         char *my_json_string = cJSON_Print(root);

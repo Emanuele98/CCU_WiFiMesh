@@ -18,7 +18,9 @@ void print_firmware_version(void)
     ESP_LOGI(TAG, "========================================");
 }
 
+
 void read_unit_id() {
+    /*
     nvs_handle_t nvs_handle;
     uint32_t unit_id = 0;
     
@@ -31,6 +33,8 @@ void read_unit_id() {
     } else {
         ESP_LOGE("UNIT", "Unit ID not found - device not provisioned");
     }
+    */
+    UNIT_ID = 2;
 }
 
 void app_main(void)
