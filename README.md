@@ -51,6 +51,8 @@ Bumblebee is a distributed wireless charging network firmware that enables intel
 ### ⚠️ Known Limitations
 - Fully charged scenario incomplete
 - WiFi power saving features disabled for performance
+- ESP32 behaving differently than ESP32-C6 (random disconnections and beacon validation)
+- Dashboard input to be extended (individual switches - set alert thresholds - display waveform for autotuning)
 - OTA updates not implemented
 
 ### 🔄 Testing Required

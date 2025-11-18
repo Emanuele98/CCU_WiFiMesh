@@ -34,13 +34,14 @@ void read_unit_id() {
         ESP_LOGE("UNIT", "Unit ID not found - device not provisioned");
     }
     */
-    UNIT_ID = 2;
+   //todo: handle NVS problems in ESP32
+    UNIT_ID = 1;
 }
 
 void app_main(void)
 {
     //! Default (for simulation avoiding I2C scan)
-    //UNIT_ROLE = RX;  //TX or RX
+    //UNIT_ROLE = TX;  //TX or RX
     //internalFWTEST = true;
 
     print_firmware_version();

@@ -207,7 +207,7 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
                                      uint8_t **out_data, uint32_t* out_len, 
                                      uint32_t seq) 
 {
-    //ESP_LOGW( TAG, "Process alert message");   
+    ESP_LOGW( TAG, "Process alert message");   
 
     // Process the received data
     if (len != sizeof(mesh_alert_payload_t)) {
@@ -235,6 +235,7 @@ static esp_err_t alert_to_root_raw_msg_process(uint8_t *data, uint32_t len,
         //    p->alert_payload->RX.RX_internal.overvoltage, p->alert_payload->RX.RX_internal.overcurrent, p->alert_payload->RX.RX_internal.overtemperature, p->alert_payload->RX.RX_internal.FullyCharged);
     
         //handle alert payload (swith off command and reconnect) - done automatically inside the node
+        //TODO: update position?
     }
 
     return ESP_OK;
