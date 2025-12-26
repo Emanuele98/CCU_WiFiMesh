@@ -1,6 +1,6 @@
 {
   "idf.flashType": "UART",
-  "idf.portWin": "COM14",
+  "idf.portWin": "COM5",
   "idf.openOcdConfigs": [
     "board/esp32-wrover-kit-3.3v.cfg"
   ],
@@ -15,9 +15,9 @@
     "--query-driver=C:\\Users\\degan\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32-elf-gcc.exe",
     "--compile-commands-dir=c:\\Users\\degan\\OneDrive\\Desktop\\2XBUMBLEBEE\\CCU_WiFiMesh\\build"
   ],
-  "idf.espIdfPathWin": "C:\\Users\\degan\\esp\\v5.5.1\\esp-idf",
-  "idf.toolsPathWin": "C:\\Users\\degan\\.espressif",
-  "idf.pythonInstallPath": "C:\\Users\\degan\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
+  "idf.espIdfPathWin": "C:\\Users\\edegani\\esp\\v5.5.1\\esp-idf",
+  "idf.toolsPathWin": "C:\\Users\\edegani\\.espressif",
+  "idf.pythonInstallPath": "C:\\Users\\edegani\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
   "files.associations": {
     "esp_bridge.h": "c",
     "cjson.h": "c",

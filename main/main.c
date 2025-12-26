@@ -19,8 +19,8 @@ void print_firmware_version(void)
 }
 
 
-void read_unit_id() {
-    /*
+void read_unit_id() 
+{
     nvs_handle_t nvs_handle;
     uint32_t unit_id = 0;
     
@@ -33,15 +33,12 @@ void read_unit_id() {
     } else {
         ESP_LOGE("UNIT", "Unit ID not found - device not provisioned");
     }
-    */
-   //todo: handle NVS problems in ESP32
-    UNIT_ID = 1;
 }
 
 void app_main(void)
 {
     //! Default (for simulation avoiding I2C scan)
-    //UNIT_ROLE = TX;  //TX or RX
+    //UNIT_ROLE = RX;  //TX or RX
     //internalFWTEST = true;
 
     print_firmware_version();
@@ -55,9 +52,6 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK( ret );
-
-    /* Init values on NVS */ 
-    //init_NVS();
 
     read_unit_id();
 
@@ -98,4 +92,59 @@ idf_component_register(SRCS "${srcs}"
                        INCLUDE_DIRS "${include_dirs}"
                        REQUIRES "${requires}"
                        PRIV_REQUIRES esp_driver_gpio) //This!
+*/
+
+/**
+ * PRINT RUN TIME STATS FOR TASKS
+ */
+/*
+// Enable the following in sdkconfig
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+
+    // === CPU MONITORING ===
+    while(1) {
+        vTaskDelay(pdMS_TO_TICKS(10000));  // Every 10 seconds
+        print_runtime_stats();
+        print_task_list();
+    }
+
+#include "esp_freertos_hooks.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+void print_runtime_stats(void)
+{
+    char *buf = malloc(2048);
+    if (buf == NULL) {
+        ESP_LOGE("STATS", "Failed to allocate buffer");
+        return;
+    }
+    
+    ESP_LOGW("CPU", "========== RUNTIME STATS ==========");
+    ESP_LOGW("CPU", "Task\t\t\tAbs Time\t%% Time");
+    
+    vTaskGetRunTimeStats(buf);
+    printf("%s\n", buf);
+    
+    // Also show free heap
+    ESP_LOGW("CPU", "Free heap: %lu bytes", esp_get_free_heap_size());
+    ESP_LOGW("CPU", "====================================");
+    
+    free(buf);
+}
+
+// Simple task list (shows state, priority, stack high water mark)
+void print_task_list(void)
+{
+    char *buf = malloc(1024);
+    if (buf == NULL) return;
+    
+    ESP_LOGW("TASKS", "Name\t\t\tState\tPrio\tStack\tNum");
+    vTaskList(buf);
+    printf("%s\n", buf);
+    
+    free(buf);
+}
 */

@@ -132,12 +132,6 @@ typedef enum {
 } TX_status;
 
 /**
- * @brief Init the values on NVS - This allows to keep track of each peer's minimum reconnection time over reboots.
- * 
- */
-//void init_NVS(void);
-
-/**
  * @brief Scan the I2C bus and print all found devices
  * 
  */

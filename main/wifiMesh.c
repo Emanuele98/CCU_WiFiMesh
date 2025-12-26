@@ -662,18 +662,21 @@ static void add_peer_if_needed(const uint8_t *peer_addr)
 // avoid for now as creates issues
 static void esp_now_encrypt_peer(const uint8_t *peer_addr)
 {
-    esp_now_peer_info_t *peer = malloc(sizeof(esp_now_peer_info_t));
-    if (peer == NULL) {
-        ESP_LOGE(TAG, "Malloc peer information fail");
-        return;
-    }
-    ESP_ERROR_CHECK( esp_now_get_peer(peer_addr, peer) );
-      
-    //add local master key (LMK)
-    peer->encrypt = true;
-    memcpy(peer->lmk, ESPNOW_LMK, ESP_NOW_KEY_LEN);
-    ESP_ERROR_CHECK( esp_now_mod_peer(peer) );
-    free(peer); 
+    #ifdef CONFIG_IDF_TARGET_ESP32C6
+    // ESP32 does not support esp-NOW LMK ecnryption while mesh lite is active (single-context CCMP Engine)
+        esp_now_peer_info_t *peer = malloc(sizeof(esp_now_peer_info_t));
+        if (peer == NULL) {
+            ESP_LOGE(TAG, "Malloc peer information fail");
+            return;
+        }
+        ESP_ERROR_CHECK( esp_now_get_peer(peer_addr, peer) );
+        
+        //add local master key (LMK)
+        peer->encrypt = true;
+        memcpy(peer->lmk, ESPNOW_LMK, ESP_NOW_KEY_LEN);
+        ESP_ERROR_CHECK( esp_now_mod_peer(peer) );
+        free(peer); 
+    #endif
 }
 
 
@@ -1241,9 +1244,9 @@ void app_wifi_set_softap_info(void)
 
 static void wifi_init(void)
 {
-    esp_wifi_set_ps(WIFI_PS_NONE);
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     // CRITICAL: Set AP to disconnect inactive stations quickly
-    esp_wifi_set_inactive_time(WIFI_IF_AP, 15);  // 15 seconds of inactivity = disconnect
+    ESP_ERROR_CHECK(esp_wifi_set_inactive_time(WIFI_IF_AP, 20));  // 20 seconds of inactivity = disconnect
 
     // Station config (yes router connection)
     wifi_config_t wifi_config = {
@@ -1257,7 +1260,7 @@ static void wifi_init(void)
     wifi_config_t wifi_config;
     memset(&wifi_config, 0x0, sizeof(wifi_config_t));
     */
-    esp_bridge_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    ESP_ERROR_CHECK(esp_bridge_wifi_set_config(WIFI_IF_STA, &wifi_config));
     
     // SoftAP config
     wifi_config_t softap_config = {
@@ -1271,7 +1274,7 @@ static void wifi_init(void)
             .dtim_period = 1, // 1 to 10 - indicates how often the AP will send DTIM beacon indicating buffered data
         },
     };
-    esp_bridge_wifi_set_config(WIFI_IF_AP, &softap_config);
+    ESP_ERROR_CHECK(esp_bridge_wifi_set_config(WIFI_IF_AP, &softap_config));
 }
 
 void wifi_mesh_init()

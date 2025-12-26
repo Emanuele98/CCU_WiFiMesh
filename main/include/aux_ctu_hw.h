@@ -10,7 +10,7 @@
 #include "driver/uart.h"
 
 /** Simulate POWER */
-#define GPIO_OUTPUT_PIN    GPIO_NUM_10
+#define GPIO_OUTPUT_PIN    GPIO_NUM_16
 
 #define UART_BUFFER_SIZE                1024
 

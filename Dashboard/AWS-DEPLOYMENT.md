@@ -410,7 +410,7 @@ docker compose logs -f
      - Username: `nodered`
      - Password: `bumblebee2025`
 5. Deploy
-6. Access dashboard: http://15.188.29.195:1880/ui
+6. Access dashboard: http://15.188.29.195:1880/bumblebee
 
 ### Step 12: Configure ESP32 Devices
 

@@ -32,44 +32,6 @@ float OVER_VOLTAGE;
 bool FOD;
 bool FULLY_CHARGED;
 
-/*
-void init_NVS(void)
-{
-    //NVS reading
-    esp_err_t err = nvs_open("reconnection", NVS_READWRITE, &my_handle);
-    if (err != ESP_OK) 
-    {
-        ESP_LOGE(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-    } else 
-        {
-            // save timePeer after connection to NTP Server
-            time(&now);
-            time(&reconnection_time);
-
-            for (uint8_t i = 0; i < MESH_LITE_MAXIMUM_NODE_NUMBER; i++)
-            {
-                char peer_name[5];
-                sprintf(peer_name, "%d", i+1);
-                err = nvs_get_i64(my_handle, peer_name, &timePeer[i]);
-                if (err == ESP_ERR_NVS_NOT_FOUND)
-                {   
-                    timePeer[i] = now;
-                    nvs_set_i64(my_handle, peer_name, timePeer[i]);
-                }
-            }
-
-            err = nvs_commit(my_handle);
-            if (!err)
-                ESP_LOGI(TAG, "NVS INIT DONE");
-            else
-                ESP_LOGE(TAG, "NVS INIT FAILED");
-            
-            // Close
-            nvs_close(my_handle);
-        }
-}
-*/
-
 void i2c_scan_bus(void)
 {
     printf("Scanning I2C bus...\n");
