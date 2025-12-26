@@ -4,6 +4,7 @@
 #include "util.h"
 #include "peer.h"
 #include "mqtt_client.h"
+#include "ota_manager.h"
 
 // MQTT Broker Settings
 #define MQTT_BROKER_HOST "15.188.29.195"
