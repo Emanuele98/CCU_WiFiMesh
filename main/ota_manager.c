@@ -45,9 +45,29 @@ static ota_completion_cb_t s_completion_callback = NULL;
 static char s_expected_sha256[OTA_SHA256_HEX_LEN + 1] = {0};
 static bool s_initialized = false;
 
+esp_mqtt_client_handle_t mqtt_client;
+extern uint8_t UNIT_ID;
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+static void ota_publish_status(const char* status, int progress, int bytes_written, int total_size)
+{
+    char topic[64];
+    char payload[256];
+    
+    snprintf(topic, sizeof(topic), "bumblebee/%d/ota/status", UNIT_ID);
+    snprintf(payload, sizeof(payload), 
+        "{\"unit_id\":%d,\"status\":\"%s\",\"progress\":%d,\"bytes\":%d,\"total\":%d}",
+        UNIT_ID, status, progress, bytes_written, total_size);
+
+        ESP_LOGI(TAG, "Publishing OTA status: %s", payload);
+    
+    //if (mqtt_client) {
+        esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 1, 0);
+    //}
+}
 
 /**
  * @brief Thread-safe progress update
@@ -134,6 +154,7 @@ static void ota_download_task(void *pvParameters)
     if (!buffer) {
         ESP_LOGE(TAG, "Failed to allocate download buffer");
         update_progress(OTA_STATUS_FAILED, OTA_ERR_NO_MEMORY, 0, 0);
+        ota_publish_status("failed", 0, 0, 0);
         goto cleanup;
     }
     
@@ -142,6 +163,7 @@ static void ota_download_task(void *pvParameters)
     mbedtls_sha256_starts(&sha256_ctx, 0);  // 0 = SHA256 (not SHA224)
     
     update_progress(OTA_STATUS_STARTING, OTA_ERR_NONE, 0, 0);
+    ota_publish_status("starting", 0, 0, 0);
     
     // ========================================================================
     // STEP 1: Find update partition
@@ -151,6 +173,7 @@ static void ota_download_task(void *pvParameters)
     if (update_partition == NULL) {
         ESP_LOGE(TAG, "No OTA partition found");
         update_progress(OTA_STATUS_FAILED, OTA_ERR_PARTITION, 0, 0);
+        ota_publish_status("failed", 0, 0, 0);
         goto cleanup;
     }
     
@@ -161,20 +184,26 @@ static void ota_download_task(void *pvParameters)
     // STEP 2: Setup HTTP client with TLS
     // ========================================================================
     
-    esp_http_client_config_t http_config = {
+    esp_http_client_config_t config = {
         .url = OTA_FIRMWARE_URL,
-        .cert_pem = ota_ca_cert,  // Reuse MQTT CA certificate
+        .cert_pem = NULL,  // Set to NULL for HTTP, or keep for HTTPS
         .timeout_ms = OTA_HTTP_TIMEOUT_MS,
-        .keep_alive_enable = true,
-        .skip_cert_common_name_check = true,  // For IP-based certs
+        .buffer_size = OTA_BUF_SIZE,
+        .buffer_size_tx = OTA_BUF_SIZE,
+        .username = OTA_HTTP_USERNAME,     
+        .password = OTA_HTTP_PASSWORD,     
+        .auth_type = HTTP_AUTH_TYPE_BASIC, 
     };
     
-    esp_http_client_handle_t http_client = esp_http_client_init(&http_config);
+    esp_http_client_handle_t http_client = esp_http_client_init(&config);
     if (!http_client) {
         ESP_LOGE(TAG, "Failed to initialize HTTP client");
         update_progress(OTA_STATUS_FAILED, OTA_ERR_HTTP_CONNECT, 0, 0);
+        ota_publish_status("failed", 0, 0, 0);
         goto cleanup;
     }
+
+    ota_publish_status("connecting", 0, 0, 0);
     
     // ========================================================================
     // STEP 3: Open HTTP connection
@@ -184,6 +213,7 @@ static void ota_download_task(void *pvParameters)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP connection failed: %s", esp_err_to_name(err));
         update_progress(OTA_STATUS_FAILED, OTA_ERR_HTTP_CONNECT, 0, 0);
+        ota_publish_status("failed", 0, 0, 0);
         goto cleanup_http;
     }
     
@@ -195,6 +225,7 @@ static void ota_download_task(void *pvParameters)
     if (status_code != 200) {
         ESP_LOGE(TAG, "HTTP error: %d", status_code);
         update_progress(OTA_STATUS_FAILED, OTA_ERR_HTTP_RESPONSE, 0, 0);
+        ota_publish_status("failed", 0, 0, 0);
         goto cleanup_http;
     }
     
@@ -202,6 +233,8 @@ static void ota_download_task(void *pvParameters)
         ESP_LOGW(TAG, "Content-Length unknown, proceeding anyway");
         content_length = 0;  // Will show 0% progress
     }
+
+    ota_publish_status("connecting", 0, 0, content_length);
     
     // ========================================================================
     // STEP 4: Begin OTA
@@ -211,6 +244,7 @@ static void ota_download_task(void *pvParameters)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
         update_progress(OTA_STATUS_FAILED, OTA_ERR_PARTITION, 0, 0);
+        ota_publish_status("failed", 0, 0, 0);
         goto cleanup_http;
     }
     
@@ -231,6 +265,7 @@ static void ota_download_task(void *pvParameters)
         if (bytes_read < 0) {
             ESP_LOGE(TAG, "HTTP read error");
             update_progress(OTA_STATUS_FAILED, OTA_ERR_DOWNLOAD, bytes_downloaded, content_length);
+            ota_publish_status("failed", 0, bytes_downloaded, content_length);
             esp_ota_abort(ota_handle);
             goto cleanup_http;
         }
@@ -244,6 +279,7 @@ static void ota_download_task(void *pvParameters)
             // Connection closed prematurely
             ESP_LOGE(TAG, "Connection closed unexpectedly");
             update_progress(OTA_STATUS_FAILED, OTA_ERR_DOWNLOAD, bytes_downloaded, content_length);
+            ota_publish_status("failed", 0, bytes_downloaded, content_length);
             esp_ota_abort(ota_handle);
             goto cleanup_http;
         }
@@ -274,6 +310,7 @@ static void ota_download_task(void *pvParameters)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(err));
             update_progress(OTA_STATUS_FAILED, OTA_ERR_FLASH_WRITE, bytes_downloaded, content_length);
+            ota_publish_status("failed", 0, bytes_downloaded, content_length);
             esp_ota_abort(ota_handle);
             goto cleanup_http;
         }
@@ -289,6 +326,7 @@ static void ota_download_task(void *pvParameters)
             if (current_progress / 10 > last_progress_log / 10) {
                 ESP_LOGI(TAG, "Download progress: %d%% (%lu / %d bytes)",
                         current_progress, bytes_downloaded, content_length);
+                ota_publish_status("downloading", current_progress, bytes_downloaded, content_length);
                 last_progress_log = current_progress;
             }
         }
@@ -302,6 +340,7 @@ static void ota_download_task(void *pvParameters)
     // ========================================================================
     
     update_progress(OTA_STATUS_VERIFYING, OTA_ERR_NONE, bytes_downloaded, content_length);
+    ota_publish_status("verifying", 100, bytes_downloaded, content_length);
     
     mbedtls_sha256_finish(&sha256_ctx, sha256_result);
     sha256_to_hex(sha256_result, sha256_hex);
@@ -315,6 +354,7 @@ static void ota_download_task(void *pvParameters)
         if (!sha256_compare(sha256_hex, s_expected_sha256)) {
             ESP_LOGE(TAG, "SHA256 MISMATCH! Aborting OTA");
             update_progress(OTA_STATUS_FAILED, OTA_ERR_SHA256_MISMATCH, bytes_downloaded, content_length);
+            ota_publish_status("failed", 0, bytes_downloaded, content_length);
             esp_ota_abort(ota_handle);
             goto cleanup_http;
         }
@@ -335,9 +375,11 @@ static void ota_download_task(void *pvParameters)
         if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
             ESP_LOGE(TAG, "Image validation failed (corrupt or wrong chip)");
             update_progress(OTA_STATUS_FAILED, OTA_ERR_IMAGE_INVALID, bytes_downloaded, content_length);
+            ota_publish_status("failed", 0, bytes_downloaded, content_length);
         } else {
             ESP_LOGE(TAG, "esp_ota_end failed: %s", esp_err_to_name(err));
             update_progress(OTA_STATUS_FAILED, OTA_ERR_FLASH_WRITE, bytes_downloaded, content_length);
+            ota_publish_status("failed", 0, bytes_downloaded, content_length);
         }
         goto cleanup_http;
     }
@@ -350,6 +392,7 @@ static void ota_download_task(void *pvParameters)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_set_boot_partition failed: %s", esp_err_to_name(err));
         update_progress(OTA_STATUS_FAILED, OTA_ERR_PARTITION, bytes_downloaded, content_length);
+        ota_publish_status("failed", 0, bytes_downloaded, content_length);
         goto cleanup_http;
     }
     
@@ -358,6 +401,7 @@ static void ota_download_task(void *pvParameters)
     // ========================================================================
     
     update_progress(OTA_STATUS_SUCCESS, OTA_ERR_NONE, bytes_downloaded, content_length);
+    ota_publish_status("success", 100, bytes_downloaded, content_length);
     
     ESP_LOGI(TAG, "============================================");
     ESP_LOGI(TAG, "OTA UPDATE SUCCESSFUL!");

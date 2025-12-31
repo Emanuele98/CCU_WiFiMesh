@@ -1,5 +1,4 @@
-#include "include/mqtt_client_manager.h"
-#include "cJSON.h"
+#include "mqtt_client_manager.h"
 
 static const char *TAG = "MQTT_CLIENT";
 
@@ -30,7 +29,7 @@ FCXWF09idcIAbIR//oI1dmqyKZoxiMq3UuHDvR6E+TzlZVmB+tER\n" \
 "-----END CERTIFICATE-----\n";
 
 /* MQTT client handle */
-static esp_mqtt_client_handle_t mqtt_client = NULL;
+extern esp_mqtt_client_handle_t mqtt_client;
 static bool mqtt_connected = false;
 static bool mqtt_initialized = false;
 
@@ -381,15 +380,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            //mqtt_connected = true;
-            esp_mqtt_client_subscribe(mqtt_client, controlTopic, 1); // subscribe to control
+            mqtt_connected = true;
+            esp_mqtt_client_subscribe(mqtt_client, controlTopic, 1); 
             esp_mqtt_client_subscribe(mqtt_client, otaTopic, 1);
             //publish_json_data(controlTopic, "0"); // reset control button
             ota_mark_valid();
-
-            //manual trigger
-            const char *jsonSha256 = "{\"sha256\":\"ba5a55c51c042b11bd3123cf75ce569faa35518425723832964f013e757ba137\"}";
-            handle_ota_command(jsonSha256, strlen(jsonSha256));
             break;
             
         case MQTT_EVENT_DISCONNECTED:

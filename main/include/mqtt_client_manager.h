@@ -3,7 +3,7 @@
 
 #include "util.h"
 #include "peer.h"
-#include "mqtt_client.h"
+#include "cJSON.h"
 #include "ota_manager.h"
 
 // MQTT Broker Settings

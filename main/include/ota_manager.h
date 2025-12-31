@@ -35,6 +35,8 @@
 #include "esp_app_format.h"
 #include "esp_system.h"
 
+#include "mqtt_client.h"
+
 #include "mbedtls/sha256.h"
 
 #ifdef __cplusplus
@@ -45,9 +47,12 @@ extern "C" {
 // CONFIGURATION
 // ============================================================================
 
-/** OTA firmware URL - served by Nginx on AWS */
-//#define OTA_FIRMWARE_URL        "https://15.188.29.195/ota/firmware.bin"
-#define OTA_FIRMWARE_URL        "https://10.218.18.6/ota/firmware.bin"
+// Node-RED on AWS Lightsail (HTTP, password-protected)
+#define OTA_FIRMWARE_URL "http://15.188.29.195:1880/ota/firmware.bin"
+
+// HTTP Basic Authentication
+#define OTA_HTTP_USERNAME "admin"
+#define OTA_HTTP_PASSWORD "bumblebee2025"
 
 /** MQTT topic for OTA commands */
 #define OTA_MQTT_TOPIC          "bumblebee/ota/start"
@@ -209,5 +214,39 @@ typedef struct {
 #ifdef __cplusplus
 }
 #endif
+
+// ============================================================================
+// QUICK REFERENCE
+// ============================================================================
+
+/*
+┌─────────────────────────────────────────────────────────────────┐
+│                     OTA FLOW ARCHITECTURE                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Node-RED Dashboard                                          │
+│     └─> Upload firmware.bin                                     │
+│         └─> Auto-calculate SHA256                               │
+│             └─> Store in /data/ota/firmware.bin                 │
+│                                                                  │
+│  2. Trigger OTA                                                 │
+│     └─> Publish MQTT: bumblebee/ota/start                      │
+│         └─> Payload: {"sha256":"..."}                           │
+│                                                                  │
+│  3. ESP32 OTA Manager                                           │
+│     └─> Receive MQTT trigger                                   │
+│         └─> Download: GET /ota/firmware.bin                     │
+│             └─> Auth: Basic admin:bumblebee2025               │
+│                 └─> Verify SHA256                              │
+│                     └─> Flash & Reboot                         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+
+MQTT Topic: bumblebee/ota/start
+JSON Format: {"sha256":"64-hex-characters"}
+HTTP Auth: Basic admin:bumblebee2025
+Download URL: http://15.188.29.195:1880/ota/firmware.bin
+
+*/
 
 #endif /* OTA_MANAGER_H */
