@@ -4,7 +4,7 @@
         {
             "label": "Flash Unit ID",
             "type": "shell",
-            "command": "python",
+            "command": "${config:idf.pythonInstallPath}",
             "args": [
                 "${workspaceFolder}/flash_unit_id.py",
                 "${input:unitId}",
@@ -25,14 +25,14 @@
         {
             "id": "unitId",
             "type": "promptString",
-            "description": "Enter Unit ID (e.g., 1001):",
-            "default": "1001"
+            "description": "Enter Unit ID (e.g., 1):",
+            "default": "1"
         },
         {
             "id": "serialPort",
             "type": "promptString",
             "description": "Serial Port:",
-            "default": "COM14"
+            "default": "COM5"
         },
         {
             "id": "chipType",

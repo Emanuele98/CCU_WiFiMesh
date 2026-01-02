@@ -25,6 +25,8 @@
 #include "esp_now.h"
 #include "esp_crc.h"
 
+#include "mqtt_client.h"
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -90,6 +92,8 @@
 //*Unit ID
 extern uint8_t UNIT_ID;
 
+extern esp_mqtt_client_handle_t mqtt_client;
+
 extern bool is_root_node;
 
 extern bool internalFWTEST;
@@ -130,12 +134,6 @@ typedef enum {
     TX_FULLY_CHARGED,      //when the pad is off but a fully charged scooter is still present on it
     TX_ALERT               //when the pad sent an alert (overcurrent, overvoltage, overtemperature, FOD)
 } TX_status;
-
-/**
- * @brief Init the values on NVS - This allows to keep track of each peer's minimum reconnection time over reboots.
- * 
- */
-//void init_NVS(void);
 
 /**
  * @brief Scan the I2C bus and print all found devices

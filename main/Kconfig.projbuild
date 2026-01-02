@@ -46,7 +46,7 @@ menu "Example Configuration"
 
     config FW_VERSION_MINOR
         int "Minor version" 
-        default 2
+        default 3
         range 0 99
         help
             Minor version number (0-99)

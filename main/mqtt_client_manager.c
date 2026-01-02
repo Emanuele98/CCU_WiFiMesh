@@ -1,11 +1,10 @@
-#include "include/mqtt_client_manager.h"
-#include "cJSON.h"
+#include "mqtt_client_manager.h"
 
 static const char *TAG = "MQTT_CLIENT";
 
 // CA Certificate for server verification
 // Copy the content of ca.crt file here
-static const char *mqtt_ca_cert = \
+const char *mqtt_ca_cert = \
 "-----BEGIN CERTIFICATE-----\n" \
 "MIIDszCCApugAwIBAgIUQtkzgohELHulJcPxI3OLmsWEMnswDQYJKoZIhvcNAQEL\
 BQAwaTELMAkGA1UEBhMCUFQxDjAMBgNVBAgMBUJyYWdhMREwDwYDVQQHDAhCYXJj\
@@ -29,8 +28,7 @@ tlix47HIKl0FuucY3e5L8EVOkBElQRsNEcJYoragJkxSNRcxFbG+3qIwVw/xqobt\
 FCXWF09idcIAbIR//oI1dmqyKZoxiMq3UuHDvR6E+TzlZVmB+tER\n" \
 "-----END CERTIFICATE-----\n";
 
-/* MQTT client handle */
-static esp_mqtt_client_handle_t mqtt_client = NULL;
+/* MQTT variables */
 static bool mqtt_connected = false;
 static bool mqtt_initialized = false;
 
@@ -43,6 +41,9 @@ static const char *dynamicTopic = "dynamic";
 static const char *alertTopic = "alerts";
 static const char *controlTopic = "bumblebee/control";
 
+//OTA MQTT TOPIC
+static const char *otaTopic = "bumblebee/ota/start";
+
 /*******************************************************
  *                JSON Helper Functions
  *******************************************************/
@@ -54,6 +55,58 @@ static void mac_to_string(const uint8_t *mac, char *str, size_t len)
 {
     snprintf(str, len, "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+/**
+ * @brief Handle OTA command from MQTT
+ * 
+ * Expected JSON format: {"sha256":"64-character-hex-string"}
+ * 
+ * @param data Pointer to received data
+ * @param data_len Length of received data
+ */
+static void handle_ota_command(const char *data, int data_len)
+{
+    ESP_LOGW(TAG, "OTA UPDATE COMMAND RECEIVED!");
+    
+    // Parse JSON to extract SHA256
+    cJSON *root = cJSON_ParseWithLength(data, data_len);
+    if (!root) {
+        ESP_LOGE(TAG, "Failed to parse OTA command JSON");
+        return;
+    }
+    
+    const char *sha256 = NULL;
+    cJSON *sha256_item = cJSON_GetObjectItem(root, "sha256");
+    if (sha256_item && cJSON_IsString(sha256_item)) {
+        sha256 = sha256_item->valuestring;
+        
+        // Validate SHA256 length
+        if (strlen(sha256) != 64) {
+            ESP_LOGE(TAG, "Invalid SHA256 length: %d (expected 64)", strlen(sha256));
+            cJSON_Delete(root);
+            return;
+        }
+        
+        ESP_LOGI(TAG, "OTA SHA256: %s", sha256);
+    } else {
+        ESP_LOGW(TAG, "No SHA256 in OTA command - update will proceed without verification");
+    }
+
+    //TODO:
+    // Let childs download first
+    // Send MAC - SHA256 to one child per time (from peer struct)
+    // wait for child to confirm/timeout
+    // repeat for all childs
+    // Master download at last
+    
+    // Start OTA update
+    esp_err_t err = ota_start_update(sha256);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start OTA: %s", esp_err_to_name(err));
+    }
+    
+    cJSON_Delete(root);
 }
 
 /**
@@ -334,8 +387,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
             mqtt_connected = true;
-            esp_mqtt_client_subscribe(mqtt_client, controlTopic, 1); // subscribe to control
+            esp_mqtt_client_subscribe(mqtt_client, controlTopic, 1); 
+            esp_mqtt_client_subscribe(mqtt_client, otaTopic, 1);
             //publish_json_data(controlTopic, "0"); // reset control button
+            ota_mark_valid();
             break;
             
         case MQTT_EVENT_DISCONNECTED:
@@ -376,6 +431,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                     write_STM_command(TX_OFF);
                     //todo: also send OFF to all connected pads
                 }
+            }
+            else if (strncmp(event->topic, otaTopic, event->topic_len) == 0)
+            {
+                handle_ota_command(event->data, event->data_len);
             }
             break;
             
@@ -454,6 +513,13 @@ esp_err_t mqtt_client_manager_init(void)
         esp_mqtt_client_destroy(mqtt_client);
         mqtt_client = NULL;
         return ESP_FAIL;
+    }
+
+    // Initialize OTA manager
+    esp_err_t ota_err = ota_manager_init();
+    if (ota_err != ESP_OK) {
+        ESP_LOGW(TAG, "OTA manager init failed: %s", esp_err_to_name(ota_err));
+        // Continue anyway - OTA is optional
     }
     
     ESP_LOGI(TAG, "MQTT client manager initialized successfully");
