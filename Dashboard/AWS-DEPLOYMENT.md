@@ -1,43 +1,80 @@
-// add these two commands on ssh lightsail instance
+# 🚀 AWS Lightsail Deployment Guide
 
-docker exec -u 0 bumblebee-nodered mkdir -p /data/ota/versions
-docker exec -u 0 bumblebee-nodered chown -R node-red:node-red /data/ota
+## Bumblebee Monitoring System - Production Setup v0.3.0
 
-# 🚀 AWS LIGHTSAIL DEPLOYMENT GUIDE - SECURE PRODUCTION SETUP
+Complete deployment guide for the Bumblebee wireless power transfer monitoring system on AWS Lightsail with TLS/SSL security and OTA firmware update support.
 
-## Complete deployment guide for Bumblebee monitoring system on AWS Lightsail with TLS/SSL security
+---
 
-## 📋 Prerequisites
+## 📋 Table of Contents
 
-- AWS Account with billing enabled
-- Basic Linux/SSH knowledge
-- Domain name (optional, for proper SSL certificates)
-- Local development environment tested and working
+- [Infrastructure Overview](#infrastructure-overview)
+- [Prerequisites](#prerequisites)
+- [Step-by-Step Deployment](#step-by-step-deployment)
+- [OTA System Configuration](#ota-system-configuration)
+- [Security Hardening](#security-hardening)
+- [Maintenance & Backup](#maintenance--backup)
+- [Troubleshooting](#troubleshooting)
+- [Production Checklist](#production-checklist)
+
+---
 
 ## 🏗️ Infrastructure Overview
 
 ```
-┌────────────────────────────────────────┐
-│         AWS Lightsail Instance         │
-│                                        │
-│  ┌──────────────────────────────────┐  │
-│  │     Docker Compose Stack         │  │
-│  │                                  │  │
-│  │  ├─ Mosquitto (8883/TLS)         │  │
-│  │  ├─ InfluxDB (8086)              │  │
-│  │  ├─ Telegraf                     │  │
-│  │  └─ Node-RED (1880)              │  │
-│  └──────────────────────────────────┘  │
-│                                        │
-│         Firewall Rules:                │
-│         - 22 (SSH)                     │
-│         - 1880 (Node-RED)              │
-│         - 8086 (InfluxDB)              │
-│         - 8883 (MQTT/TLS)              │
-└────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                   AWS Lightsail Instance                       │
+│                   Ubuntu 22.04 LTS                             │
+│                   $10/month (2GB RAM, 60GB SSD)                │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                 Docker Compose Stack                      │  │
+│  │                                                           │  │
+│  │  ┌───────────┐  ┌───────────┐  ┌───────────┐            │  │
+│  │  │ Mosquitto │  │ InfluxDB  │  │ Telegraf  │            │  │
+│  │  │   MQTT    │  │    DB     │  │  Bridge   │            │  │
+│  │  │   :8883   │  │   :8086   │  │           │            │  │
+│  │  └───────────┘  └───────────┘  └───────────┘            │  │
+│  │                                                           │  │
+│  │  ┌───────────────────────────────────────────────────┐   │  │
+│  │  │              Node-RED Dashboard                    │   │  │
+│  │  │  - Real-time monitoring      (:1880)              │   │  │
+│  │  │  - OTA firmware hosting      (/ota/firmware.bin)  │   │  │
+│  │  │  - OTA management UI         (/dashboard/ota)     │   │  │
+│  │  └───────────────────────────────────────────────────┘   │  │
+│  │                                                           │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                │
+│  Firewall Rules:                                               │
+│  - 22 (SSH)                                                    │
+│  - 1880 (Node-RED Dashboard + OTA)                            │
+│  - 8086 (InfluxDB)                                            │
+│  - 8883 (MQTT/TLS)                                            │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-## 📝 Step-by-Step Deployment
+### Service Endpoints
+
+| Service | Port | Protocol | Purpose |
+|---------|------|----------|---------|
+| Mosquitto | 8883 | MQTTS | Secure MQTT broker |
+| Mosquitto | 1883 | MQTT | Internal Docker only |
+| InfluxDB | 8086 | HTTP | Time-series database |
+| Node-RED | 1880 | HTTP | Dashboard & OTA server |
+| Telegraf | — | Internal | MQTT → InfluxDB bridge |
+
+---
+
+## 📝 Prerequisites
+
+- AWS Account with billing enabled
+- Basic Linux/SSH knowledge
+- Local development environment tested
+- Domain name (optional, for proper SSL)
+
+---
+
+## 🔧 Step-by-Step Deployment
 
 ### Step 1: Create Lightsail Instance
 
@@ -46,34 +83,32 @@ docker exec -u 0 bumblebee-nodered chown -R node-red:node-red /data/ota
 3. Select:
    - **Platform**: Linux/Unix
    - **Blueprint**: Ubuntu 22.04 LTS
-   - **Instance Plan**: $10/month (2GB RAM, 60GB SSD) or higher
+   - **Instance Plan**: $10/month (2GB RAM, 60GB SSD) minimum
    - **Instance Name**: `bumblebee-monitor`
 4. Click **"Create Instance"**
 
 ### Step 2: Configure Firewall
 
-1. Click on your instance → **Networking tab**
-2. Add firewall rules:
+Navigate to your instance → **Networking** → Add rules:
 
 | Application | Protocol | Port | Restrict to |
 |-------------|----------|------|-------------|
 | SSH | TCP | 22 | Your IP (recommended) |
-| Custom | TCP | 1880 | Specific IPs or Any |
-| Custom | TCP | 8086 | Specific IPs or Any |
-| Custom | TCP | 8883 | Any (for ESP32s) |
+| Custom | TCP | 1880 | Any |
+| Custom | TCP | 8086 | Any |
+| Custom | TCP | 8883 | Any |
 
 ### Step 3: Assign Static IP
 
-1. Go to **Networking tab**
+1. Go to **Networking** tab
 2. Click **"Create static IP"**
 3. Attach to your instance
-4. Note the IP (e.g., `15.188.29.195`)
+4. Note the IP: `15.188.29.195`
 
 ### Step 4: Connect via SSH
 
 ```bash
-# Using Lightsail browser console
-# Or from your terminal:
+# Using Lightsail browser console, or:
 ssh -i /path/to/key.pem ubuntu@15.188.29.195
 ```
 
@@ -88,12 +123,13 @@ sudo apt install -y ca-certificates curl gnupg lsb-release
 
 # Add Docker's GPG key
 sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
 # Set up repository
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Install Docker
 sudo apt update
@@ -103,7 +139,7 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo usermod -aG docker ubuntu
 newgrp docker
 
-# Verify installation
+# Verify
 docker --version
 docker compose version
 ```
@@ -111,33 +147,33 @@ docker compose version
 ### Step 6: Create Project Structure
 
 ```bash
-# Create directories
 mkdir -p ~/bumblebee-monitoring
 cd ~/bumblebee-monitoring
-mkdir -p mosquitto/config mosquitto/certs telegraf
+mkdir -p mosquitto/config mosquitto/certs telegraf nodered
 ```
 
-### Step 7: Generate SSL/TLS Certificates
+### Step 7: Generate TLS Certificates
 
-#### Option A: Self-Signed Certificates (Testing)
+#### Option A: Self-Signed (Development/Testing)
 
 ```bash
 cd ~/bumblebee-monitoring/mosquitto/certs
 
 # Generate CA certificate
-openssl req -new -x509 -days 365 -extensions v3_ca -keyout ca.key -out ca.crt \
-  -subj "/C=PT/ST=Braga/L=Barcelos/O=Bumblebee/OU=IoT/CN=Bumblebee-CA"
+openssl req -new -x509 -days 365 -extensions v3_ca \
+  -keyout ca.key -out ca.crt \
+  -subj "/C=US/ST=State/L=City/O=Bumblebee/OU=IoT/CN=Bumblebee-CA"
 
 # Generate server key
 openssl genrsa -out server.key 2048
 
 # Generate server certificate request
 openssl req -new -key server.key -out server.csr \
-  -subj "/C=PT/ST=Braga/L=Barcelos/O=Bumblebee/OU=IoT/CN=15.188.29.195"
+  -subj "/C=US/ST=State/L=City/O=Bumblebee/OU=IoT/CN=15.188.29.195"
 
 # Sign the certificate
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
-  -out server.crt -days 365
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
+  -CAcreateserial -out server.crt -days 365
 
 # Set permissions
 chmod 644 ca.crt server.crt
@@ -150,43 +186,33 @@ cd ~/bumblebee-monitoring
 #### Option B: Let's Encrypt (Production with Domain)
 
 ```bash
-# Install certbot
 sudo apt install -y certbot
-
-# Stop any services using port 80
-docker compose down
-
-# Get certificate (replace with your domain)
 sudo certbot certonly --standalone -d your-domain.com
 
-# Copy certificates
 sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem mosquitto/certs/server.crt
 sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem mosquitto/certs/server.key
 sudo cp /etc/letsencrypt/live/your-domain.com/chain.pem mosquitto/certs/ca.crt
-
-# Fix ownership
 sudo chown -R ubuntu:ubuntu mosquitto/certs/
-chmod 644 mosquitto/certs/*.crt
-chmod 600 mosquitto/certs/*.key
 ```
 
 ### Step 8: Create Configuration Files
 
-#### 8.1 Create docker-compose.yml
+#### 8.1 docker-compose.yml
 
-```bash
-cat > docker-compose.yml << 'EOF'
+```yaml
 version: '3.8'
 
 services:
+  # ===============================================
   # MOSQUITTO - Secure MQTT Broker
+  # ===============================================
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: bumblebee-mosquitto
     ports:
-      - "1883:1883"      # Internal only (optional)
-      - "8883:8883"      # MQTT over TLS
-      - "9001:9001"      # WebSocket over TLS
+      - "1883:1883"
+      - "8883:8883"
+      - "9001:9001"
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - ./mosquitto/config/passwd:/mosquitto/config/passwd
@@ -203,7 +229,9 @@ services:
       timeout: 10s
       retries: 3
 
+  # ===============================================
   # INFLUXDB - Time Series Database
+  # ===============================================
   influxdb:
     image: influxdb:2.7
     container_name: bumblebee-influxdb
@@ -219,15 +247,22 @@ services:
       - DOCKER_INFLUXDB_INIT_ORG=bumblebee
       - DOCKER_INFLUXDB_INIT_BUCKET=sensor_data
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=bumblebee-super-secret-token
-      - DOCKER_INFLUXDB_INIT_RETENTION=30d
+      - DOCKER_INFLUXDB_INIT_RETENTION=0
     networks:
       bumblebee-network:
         ipv4_address: 172.20.0.3
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # TELEGRAF - Data Bridge with Authentication
+  # ===============================================
+  # TELEGRAF - Data Bridge
+  # ===============================================
   telegraf:
-    image: telegraf:1.28
+    image: telegraf:latest
     container_name: bumblebee-telegraf
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
@@ -238,13 +273,15 @@ services:
       mosquitto:
         condition: service_healthy
       influxdb:
-        condition: service_started
+        condition: service_healthy
     networks:
       bumblebee-network:
         ipv4_address: 172.20.0.4
     restart: unless-stopped
 
-  # NODE-RED - Dashboard
+  # ===============================================
+  # NODE-RED - Dashboard & OTA Server
+  # ===============================================
   nodered:
     image: nodered/node-red:latest
     container_name: bumblebee-nodered
@@ -252,15 +289,32 @@ services:
       - "1880:1880"
     volumes:
       - nodered_data:/data
+      - nodered_ota:/data/ota
+      - ./nodered/settings.js:/data/settings.js:ro
     environment:
-      - TZ=Europe/Lisbon
+      - TZ=Europe/Rome
+      - NODE_RED_ENABLE_PROJECTS=false
+      - MQTT_USERNAME=nodered
+      - MQTT_PASSWORD=bumblebee2025
+      - NODE_RED_CREDENTIAL_SECRET=bumblebee_secret_key_2025
     depends_on:
-      - mosquitto
-      - influxdb
+      mosquitto:
+        condition: service_healthy
     networks:
       bumblebee-network:
         ipv4_address: 172.20.0.5
     restart: unless-stopped
+    command: >
+      sh -c "mkdir -p /data/ota/versions && 
+             chmod -R 755 /data/ota &&
+             npm start -- --userDir /data"
+
+networks:
+  bumblebee-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
   mosquitto_data:
@@ -268,45 +322,34 @@ volumes:
   influxdb_data:
   influxdb_config:
   nodered_data:
-
-networks:
-  bumblebee-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
-EOF
+  nodered_ota:
 ```
 
-#### 8.2 Create Mosquitto Configuration
+#### 8.2 mosquitto/config/mosquitto.conf
 
-```bash
-cat > mosquitto/config/mosquitto.conf << 'EOF'
-# BUMBLEBEE - Production MQTT Configuration
-
-# Security Settings
+```conf
+# Bumblebee MQTT Broker - Secure Configuration
 per_listener_settings true
 allow_anonymous false
 
-# Secure External Listener (Port 8883)
-listener 8883 0.0.0.0
+# Secure MQTT (Port 8883 with TLS)
+listener 8883
 protocol mqtt
 certfile /mosquitto/certs/server.crt
 keyfile /mosquitto/certs/server.key
 cafile /mosquitto/certs/ca.crt
 require_certificate false
-use_identity_as_username false
 password_file /mosquitto/config/passwd
 tls_version tlsv1.2
 
-# Internal Listener (Port 1883 - Docker network only)
-listener 1883 172.20.0.2
+# Internal MQTT (Port 1883 - Docker network only)
+listener 1883 0.0.0.0
 protocol mqtt
 allow_anonymous false
 password_file /mosquitto/config/passwd
 
-# WebSocket over TLS (Port 9001)
-listener 9001 0.0.0.0
+# WebSocket (Port 9001 with TLS)
+listener 9001
 protocol websockets
 certfile /mosquitto/certs/server.crt
 keyfile /mosquitto/certs/server.key
@@ -333,258 +376,308 @@ log_timestamp_format %Y-%m-%dT%H:%M:%S
 max_connections -1
 max_keepalive 65535
 message_size_limit 10240
-EOF
 ```
 
-#### 8.3 Create Telegraf Configuration
+#### 8.3 telegraf/telegraf.conf
 
-```bash
-cat > telegraf/telegraf.conf << 'EOF'
+```toml
+[global_tags]
+  system = "bumblebee"
+  environment = "production"
+
 [agent]
-  interval = "10s"
+  interval = "1s"
   round_interval = true
   metric_batch_size = 1000
   metric_buffer_limit = 10000
-  flush_interval = "10s"
-  precision = ""
+  flush_interval = "1s"
   hostname = "bumblebee-telegraf"
 
-# Secure MQTT Consumer
 [[inputs.mqtt_consumer]]
   servers = ["tcp://172.20.0.2:1883"]
-  topics = [
-    "bumblebee/+/dynamic",
-    "bumblebee/+/alerts"
-  ]
-  username = "telegraf"
-  password = "bumblebee2025"
-  data_format = "json"
-  json_strict = false
+  topics = ["bumblebee/+/dynamic", "bumblebee/+/alerts"]
+  qos = 1
+  client_id = "telegraf_bumblebee"
+  username = "${MQTT_USERNAME}"
+  password = "${MQTT_PASSWORD}"
+  data_format = "json_v2"
 
-# InfluxDB v2 Output
+  [[inputs.mqtt_consumer.json_v2]]
+    measurement_name = "bumblebee_dynamic"
+    
+    [[inputs.mqtt_consumer.json_v2.tag]]
+      path = "unit_id"
+    
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "tx.voltage"
+      rename = "tx_voltage"
+      type = "float"
+    
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "tx.current"
+      rename = "tx_current"
+      type = "float"
+    
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "rx.voltage"
+      rename = "rx_voltage"
+      type = "float"
+    
+    [[inputs.mqtt_consumer.json_v2.field]]
+      path = "rx.current"
+      rename = "rx_current"
+      type = "float"
+
 [[outputs.influxdb_v2]]
   urls = ["http://172.20.0.3:8086"]
   token = "bumblebee-super-secret-token"
   organization = "bumblebee"
   bucket = "sensor_data"
-EOF
 ```
 
-### Step 9: Create User Accounts
+#### 8.4 nodered/settings.js
+
+```javascript
+module.exports = {
+    flowFile: 'flows.json',
+    flowFilePretty: true,
+    credentialSecret: process.env.NODE_RED_CREDENTIAL_SECRET || "bumblebee_secret_key_2025",
+    
+    // Authentication
+    adminAuth: {
+        type: "credentials",
+        users: [{
+            username: "admin",
+            password: "$2b$08$CNi/3RnATkuVlB4QhkcyZOYIxpWgR2pgZKJP4Z7CPij5yEkCG1o3q",
+            permissions: "*"
+        }]
+    },
+    
+    // HTTP node authentication (for OTA endpoints)
+    httpNodeAuth: {
+        user: "admin",
+        pass: "$2b$08$CNi/3RnATkuVlB4QhkcyZOYIxpWgR2pgZKJP4Z7CPij5yEkCG1o3q"
+    },
+    
+    uiPort: process.env.PORT || 1880,
+    uiHost: "0.0.0.0",
+    httpAdminRoot: '/',
+    httpNodeRoot: '/',
+    
+    httpNodeCors: {
+        origin: "*",
+        methods: "GET,PUT,POST,DELETE"
+    },
+    
+    logging: {
+        console: {
+            level: "info",
+            metrics: false,
+            audit: false
+        }
+    },
+    
+    functionGlobalContext: {
+        os: require('os'),
+        fs: require('fs'),
+        path: require('path'),
+        crypto: require('crypto')
+    },
+    
+    apiMaxLength: '10mb',
+    
+    diagnostics: {
+        enabled: false
+    }
+}
+```
+
+### Step 9: Create MQTT Users
 
 ```bash
-# Start mosquitto first
+# Start Mosquitto first
 docker compose up -d mosquitto
 
 # Create password file with users
 docker compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd bumblebee
-# Enter password: bumblebee2025
+# Enter: bumblebee2025
 
 docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd telegraf
-# Enter password: bumblebee2025
+# Enter: bumblebee2025
 
 docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd nodered
-# Enter password: bumblebee2025
+# Enter: bumblebee2025
 
-# Verify passwords were created
+# Verify
 docker compose exec mosquitto cat /mosquitto/config/passwd
 ```
 
 ### Step 10: Start All Services
 
 ```bash
-# Start the complete stack
 docker compose up -d
-
-# Verify all services are running
 docker compose ps
-
-# Check logs
 docker compose logs -f
 ```
 
-### Step 11: Import Node-RED Dashboard
+### Step 11: Configure Node-RED OTA Directory
+
+```bash
+# Create OTA directories with proper permissions
+docker exec -u 0 bumblebee-nodered mkdir -p /data/ota/versions
+docker exec -u 0 bumblebee-nodered chown -R node-red:node-red /data/ota
+```
+
+### Step 12: Import Node-RED Dashboard
 
 1. Open Node-RED: http://15.188.29.195:1880
-2. Click hamburger menu → Import
-3. Copy/paste your flow JSON
-4. Configure MQTT nodes:
+2. Login: admin / bumblebee2025
+3. Click hamburger menu → Import
+4. Import your dashboard flow JSON
+5. Configure MQTT nodes:
    - Server: `172.20.0.2`
    - Port: `1883`
-   - Security:
-     - Username: `nodered`
-     - Password: `bumblebee2025`
-5. Deploy
-6. Access dashboard: http://15.188.29.195:1880/bumblebee
+   - Username: `nodered`
+   - Password: `bumblebee2025`
+6. Deploy
 
-### Step 12: Configure ESP32 Devices
+---
 
-Update ESP32 firmware with production settings:
+## 🔄 OTA System Configuration
 
-```c
-// main/include/mqtt_client_manager.h
-#define MQTT_BROKER_HOST "15.188.29.195"
-#define MQTT_BROKER_PORT 8883  // Secure port
-#define MQTT_USERNAME "bumblebee"
-#define MQTT_PASSWORD "bumblebee2025"
+### OTA Architecture
 
-// In mqtt_client_manager.c, add the CA certificate:
-static const char *mqtt_ca_cert = \
-"-----BEGIN CERTIFICATE-----\n" \
-// ... (paste content of ca.crt) ...
-"-----END CERTIFICATE-----\n";
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Node-RED OTA System                       │
+│                                                              │
+│  Dashboard (/dashboard/ota)                                  │
+│  ├── Upload firmware.bin                                    │
+│  ├── Auto-calculate SHA256                                  │
+│  ├── Store in /data/ota/firmware.bin                       │
+│  └── Trigger OTA via MQTT                                   │
+│                                                              │
+│  HTTP Endpoint (/ota/firmware.bin)                          │
+│  ├── Basic Auth: admin:bumblebee2025                        │
+│  └── Serves firmware to ESP32                               │
+│                                                              │
+│  MQTT Topics                                                 │
+│  ├── bumblebee/ota/start (trigger)                          │
+│  └── bumblebee/+/ota/status (progress)                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Step 13: Test Secure Connections
+### OTA Trigger Flow
 
-#### From Server
+1. Upload firmware via dashboard
+2. SHA256 calculated automatically
+3. Click "Trigger OTA"
+4. MQTT publishes: `bumblebee/ota/start` with `{"sha256":"..."}`
+5. ESP32 ROOT receives command
+6. ESP32 downloads from: `http://15.188.29.195:1880/ota/firmware.bin`
+7. ESP32 verifies SHA256
+8. ESP32 flashes and reboots
+
+### Manual OTA Trigger
+
 ```bash
-# Test internal connection
-docker compose exec mosquitto mosquitto_pub \
-  -h localhost -p 1883 \
-  -u bumblebee -P bumblebee2025 \
-  -t test/topic -m "Internal test"
-
-# Test TLS from outside container
-mosquitto_pub \
-  -h localhost -p 8883 \
-  --cafile mosquitto/certs/ca.crt \
-  -u bumblebee -P bumblebee2025 \
-  -t test/topic -m "TLS test"
-```
-
-#### From Remote Machine
-```bash
-# Download ca.crt to your local machine, then:
-mosquitto_pub \
-  -h 15.188.29.195 -p 8883 \
+# Via MQTT
+mosquitto_pub -h 15.188.29.195 -p 8883 \
   --cafile ca.crt \
   -u bumblebee -P bumblebee2025 \
-  -t test/topic -m "Remote TLS test"
+  -t "bumblebee/ota/start" \
+  -m '{"sha256":"YOUR_64_CHAR_SHA256_HASH"}'
 ```
+
+### Test OTA Endpoint
+
+```bash
+# Test firmware download
+curl -u admin:bumblebee2025 \
+  http://15.188.29.195:1880/ota/firmware.bin \
+  -o test.bin
+
+# Verify download
+sha256sum test.bin
+ls -la test.bin
+```
+
+### Future Enhancement: nginx Integration
+
+In a future version, nginx will replace the Node-RED HTTP endpoint to enable concurrent firmware downloads for all mesh nodes simultaneously. This will require:
+
+1. Adding nginx container to docker-compose.yml
+2. Shared volume between Node-RED and nginx for firmware files
+3. Updated ESP32 firmware URL configuration
+4. Mesh broadcast of OTA command to all nodes
+
+---
 
 ## 🔒 Security Hardening
 
 ### 1. Restrict SSH Access
 
 ```bash
-# Edit SSH config
 sudo nano /etc/ssh/sshd_config
 
-# Add these lines:
+# Add:
 PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
 AllowUsers ubuntu
 
-# Restart SSH
 sudo systemctl restart sshd
 ```
 
 ### 2. Enable UFW Firewall
 
 ```bash
-# Configure UFW
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
-sudo ufw allow 22/tcp        # SSH
-sudo ufw allow 1880/tcp      # Node-RED
-sudo ufw allow 8086/tcp      # InfluxDB
-sudo ufw allow 8883/tcp      # MQTT/TLS
+sudo ufw allow 22/tcp
+sudo ufw allow 1880/tcp
+sudo ufw allow 8086/tcp
+sudo ufw allow 8883/tcp
 sudo ufw --force enable
-
-# Check status
 sudo ufw status verbose
 ```
 
-### 3. Implement Fail2Ban
+### 3. Install Fail2Ban
 
 ```bash
-# Install fail2ban
 sudo apt install -y fail2ban
-
-# Create local config
 sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
-
-# Start service
 sudo systemctl enable fail2ban
 sudo systemctl start fail2ban
 ```
 
-### 4. Setup Automatic Updates
+### 4. Configure Log Rotation
 
 ```bash
-# Install unattended-upgrades
-sudo apt install -y unattended-upgrades
-
-# Enable automatic security updates
-sudo dpkg-reconfigure --priority=low unattended-upgrades
-```
-
-## 📊 Monitoring & Maintenance
-
-### Health Checks
-
-```bash
-# Create health check script
-cat > ~/health-check.sh << 'EOF'
-#!/bin/bash
-echo "=== Bumblebee System Health Check ==="
-echo "Date: $(date)"
-echo ""
-echo "=== Docker Services ==="
-docker compose ps
-echo ""
-echo "=== Resource Usage ==="
-docker stats --no-stream
-echo ""
-echo "=== Mosquitto Connections ==="
-docker compose exec mosquitto mosquitto_sub -t '$SYS/broker/clients/connected' -C 1 -u telegraf -P bumblebee2025
-echo ""
-echo "=== Disk Usage ==="
-df -h
-echo ""
-echo "=== Memory Usage ==="
-free -h
+cat > /etc/logrotate.d/bumblebee << 'EOF'
+/home/ubuntu/bumblebee-monitoring/mosquitto/log/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    notifempty
+}
 EOF
-
-chmod +x ~/health-check.sh
-
-# Run health check
-./health-check.sh
 ```
 
-### Log Management
+---
 
-```bash
-# View logs
-docker compose logs -f mosquitto  # MQTT logs
-docker compose logs -f telegraf   # Data bridge logs
-docker compose logs -f influxdb   # Database logs
-docker compose logs -f nodered    # Dashboard logs
-
-# Setup log rotation
-cat > ~/docker-log-rotate.sh << 'EOF'
-#!/bin/bash
-docker compose logs --no-color > logs/bumblebee-$(date +%Y%m%d).log
-find logs/ -name "*.log" -mtime +30 -delete
-EOF
-
-chmod +x ~/docker-log-rotate.sh
-
-# Add to crontab
-(crontab -l 2>/dev/null; echo "0 0 * * * /home/ubuntu/docker-log-rotate.sh") | crontab -
-```
-
-## 💾 Backup Strategy
+## 🔧 Maintenance & Backup
 
 ### Automated Backup Script
 
 ```bash
 cat > ~/backup-bumblebee.sh << 'EOF'
 #!/bin/bash
-BACKUP_DIR=~/backups/$(date +%Y%m%d)
+BACKUP_DIR=~/backups/$(date +%Y%m%d_%H%M%S)
 mkdir -p $BACKUP_DIR
+
+cd ~/bumblebee-monitoring
 
 # Backup InfluxDB
 docker run --rm \
@@ -597,12 +690,6 @@ docker run --rm \
   -v bumblebee-monitoring_nodered_data:/data \
   -v $BACKUP_DIR:/backup \
   alpine tar czf /backup/nodered.tar.gz -C /data .
-
-# Backup Mosquitto data
-docker run --rm \
-  -v bumblebee-monitoring_mosquitto_data:/data \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/mosquitto.tar.gz -C /data .
 
 # Backup configurations
 tar czf $BACKUP_DIR/configs.tar.gz mosquitto/ telegraf/ docker-compose.yml
@@ -619,10 +706,30 @@ chmod +x ~/backup-bumblebee.sh
 (crontab -l 2>/dev/null; echo "0 2 * * * /home/ubuntu/backup-bumblebee.sh") | crontab -
 ```
 
+### Service Management Commands
+
+```bash
+# Start all services
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# Restart specific service
+docker compose restart nodered
+
+# View logs
+docker compose logs -f
+docker compose logs -f mosquitto
+docker compose logs -f nodered
+
+# Check resource usage
+docker stats
+```
+
 ### Certificate Renewal (Let's Encrypt)
 
 ```bash
-# Create renewal script
 cat > ~/renew-certs.sh << 'EOF'
 #!/bin/bash
 certbot renew --quiet
@@ -635,9 +742,11 @@ EOF
 
 chmod +x ~/renew-certs.sh
 
-# Schedule weekly renewal check
+# Schedule weekly renewal
 (crontab -l 2>/dev/null; echo "0 3 * * 1 /home/ubuntu/renew-certs.sh") | crontab -
 ```
+
+---
 
 ## 🐛 Troubleshooting
 
@@ -650,12 +759,21 @@ openssl s_client -connect 15.188.29.195:8883 -CAfile mosquitto/certs/ca.crt
 # Check certificate validity
 openssl x509 -in mosquitto/certs/server.crt -noout -dates
 
-# Monitor MQTT connections
+# Monitor MQTT traffic
 docker compose exec mosquitto mosquitto_sub -t '#' -v -u bumblebee -P bumblebee2025
+```
 
-# Check firewall
-sudo ufw status
-sudo iptables -L -n
+### OTA Issues
+
+```bash
+# Check OTA directory
+docker exec bumblebee-nodered ls -la /data/ota/
+
+# Test firmware endpoint
+curl -v -u admin:bumblebee2025 http://localhost:1880/ota/firmware.bin
+
+# Check Node-RED logs
+docker compose logs -f nodered | grep -i ota
 ```
 
 ### Performance Issues
@@ -665,145 +783,68 @@ sudo iptables -L -n
 htop
 docker stats
 
-# Check disk I/O
-iotop
+# Check disk space
+df -h
 
-# Optimize Docker
+# Clean Docker resources
 docker system prune -a
 docker volume prune
 ```
 
-### ESP32 Connection Problems
+---
 
-1. Verify CA certificate is correctly embedded
-2. Check heap memory (TLS needs ~40KB)
-3. Ensure correct username/password
-4. Monitor MQTT logs: `docker compose logs -f mosquitto`
-5. Check ESP32 serial output for TLS errors
+## ✅ Production Checklist
 
-## 📈 Scaling Considerations
+### Security
 
-### When to Upgrade
+- [ ] Changed all default passwords
+- [ ] Configured firewall rules
+- [ ] Enabled TLS on MQTT
+- [ ] Restricted SSH access
+- [ ] Set up fail2ban
+- [ ] Updated Node-RED admin password
 
-Monitor these metrics:
-- CPU usage > 70% sustained
-- Memory usage > 80%
-- Disk I/O wait > 20%
-- Network bandwidth saturation
-- More than 100 connected devices
+### Monitoring
 
-### Upgrade Options
+- [ ] Health check script scheduled
+- [ ] Log rotation configured
+- [ ] Resource monitoring enabled
+- [ ] Alerts configured
 
-1. **Vertical Scaling**: Upgrade Lightsail instance
-   - $20/month: 4GB RAM, 80GB SSD
-   - $40/month: 8GB RAM, 160GB SSD
+### Backup
 
-2. **Horizontal Scaling**: Multiple instances
-   - Separate MQTT broker
-   - Dedicated InfluxDB server
-   - Load balancer for Node-RED
+- [ ] Automated backups scheduled
+- [ ] Backup retention policy set
+- [ ] Restore procedure tested
 
-3. **AWS Services Integration**:
-   - AWS IoT Core for MQTT
-   - AWS Timestream for time-series data
-   - AWS ECS/EKS for container orchestration
+### OTA
 
-## 🎯 Production Checklist
+- [ ] OTA directory created with permissions
+- [ ] HTTP endpoint tested
+- [ ] SHA256 verification working
+- [ ] ESP32 can download firmware
 
-### Before Going Live
+### Testing
 
-- [ ] **Security**
-  - [ ] Changed all default passwords
-  - [ ] Configured firewall rules
-  - [ ] Enabled SSL/TLS on all services
-  - [ ] Restricted SSH access
-  - [ ] Set up fail2ban
-
-- [ ] **Monitoring**
-  - [ ] Health check script scheduled
-  - [ ] Log rotation configured
-  - [ ] Resource monitoring enabled
-  - [ ] Alerts configured
-
-- [ ] **Backup**
-  - [ ] Automated backups scheduled
-  - [ ] Backup retention policy set
-  - [ ] Restore procedure tested
-
-- [ ] **Documentation**
-  - [ ] Password vault updated
-  - [ ] Network diagram current
-  - [ ] Runbook created
-  - [ ] Contact list maintained
-
-- [ ] **Testing**
-  - [ ] Load testing completed
-  - [ ] Failover tested
-  - [ ] ESP32 connections verified
-  - [ ] Dashboard functionality confirmed
-
-## 📞 Support & Maintenance
-
-### Regular Maintenance Tasks
-
-**Daily:**
-- Check service health
-- Monitor error logs
-- Verify data ingestion
-
-**Weekly:**
-- Review resource usage
-- Check certificate expiration
-- Test backups
-- Update documentation
-
-**Monthly:**
-- Security updates
-- Performance optimization
-- Capacity planning
-- Cost review
-
-### Emergency Procedures
-
-```bash
-# Quick service restart
-cd ~/bumblebee-monitoring
-docker compose restart
-
-# Full system restart
-docker compose down
-docker compose up -d
-
-# Emergency backup
-./backup-bumblebee.sh
-
-# View all logs
-docker compose logs --tail=100
-
-# Roll back to previous version
-docker compose down
-git checkout <previous-commit>
-docker compose up -d
-```
-
-## 🎉 Deployment Complete!
-
-Your production Bumblebee monitoring system is now running securely on AWS Lightsail!
-
-**Access Points:**
-- Dashboard: http://15.188.29.195:1880/dashboard/bumblebee
-- Node-RED: http://15.188.29.195:1880
-- InfluxDB: http://15.188.29.195:8086
-- Secure MQTT: mqtts://15.188.29.195:8883
-
-**Next Steps:**
-1. Configure all ESP32 devices with production settings
-2. Verify data flow from devices to dashboard
-3. Set up monitoring alerts
-4. Document any customizations
-5. Train operators on system usage
+- [ ] ESP32 MQTT connections verified
+- [ ] Dashboard functionality confirmed
+- [ ] OTA update tested end-to-end
+- [ ] Failover tested
 
 ---
 
-**🐝 BUMBLEBEE - Production-Ready Wireless Power Transfer Monitoring**  
-**Version 2.0 - Secured with TLS/SSL**
+## 📊 Access Points Summary
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Dashboard | http://15.188.29.195:1880/dashboard/bumblebee | — |
+| Node-RED Editor | http://15.188.29.195:1880 | admin / bumblebee2025 |
+| OTA Firmware | http://15.188.29.195:1880/ota/firmware.bin | admin / bumblebee2025 |
+| InfluxDB | http://15.188.29.195:8086 | admin / bumblebee2025 |
+| MQTT (TLS) | mqtts://15.188.29.195:8883 | bumblebee / bumblebee2025 |
+
+---
+
+**🐝 BUMBLEBEE - Production Wireless Power Transfer Monitoring**  
+**Version 0.3.0 - Secured with TLS/SSL + OTA Support**  
+**Last Updated:** January 2026

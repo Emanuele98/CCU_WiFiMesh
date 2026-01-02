@@ -1,330 +1,290 @@
-# 🐝 Bumblebee WiFi Mesh Lite - Wireless Charging Network
+# 🐝 Bumblebee - Wireless Power Transfer Mesh Network
 
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.5.1-green)](https://docs.espressif.com/projects/esp-idf/en/latest/)
 [![Platform](https://img.shields.io/badge/platform-ESP32--C6-blue)](https://www.espressif.com/en/products/socs/esp32-c6)
 [![Platform](https://img.shields.io/badge/platform-ESP32-blue)](https://www.espressif.com/en/products/socs/esp32)
+[![Version](https://img.shields.io/badge/version-v0.3.0-orange)](https://github.com/yourusername/bumblebee-mesh)
 [![RTOS](https://img.shields.io/badge/RTOS-FreeRTOS-purple)](https://www.freertos.org/)
-
 
 ## 🎯 Overview
 
-Bumblebee is a distributed wireless charging network firmware that enables intelligent power management for electric scooter charging stations. Built on ESP32-C6 microcontrollers (but also works on traditional ESP32), it creates a self-organizing mesh network combining WiFi Mesh-Lite for inter-station communication and ESP-NOW for ultra-low latency charging pad to scooter communication.
+Bumblebee is a distributed wireless charging network firmware for electric scooter charging stations. Built on ESP32-C6 microcontrollers (with ESP32 classic support), it creates a self-organizing mesh network combining **WiFi Mesh-Lite** for inter-station communication and **ESP-NOW** for ultra-low latency charging pad communication.
 
 ### 🌐 Live Dashboard
-**Real-time monitoring available at: http://15.188.29.195:1880/dashboard/bumblebee**
 
-### ⚡ Key Features
-- **Self-organizing mesh network** with automatic root election
-- **Dual-protocol architecture**: WiFi Mesh-Lite (TX↔TX) + ESP-NOW (TX↔RX)  
-- **Real-time telemetry** via MQTT to cloud dashboard
-- **Automatic scooter detection and localization**
-- **Safety-first design** with hardware alerts and emergency shutoff
-- **Sub-10ms alert response time** for critical safety events
-
-### 📊 Performance Metrics
-
-| Protocol | Use Case | Throughput | Latency | Packet Loss |
-|----------|----------|------------|---------|-------------|
-| **WiFi Mesh-Lite** | TX↔TX Communication | 13+ Mbps | 3-5 ms | <0% |
-| **ESP-NOW** | TX↔RX Low Latency | 40 Kbps | 7 ms | 0% |
-| **Native TCP** | Alternative | 224 Kbps | 3.7 ms | 0% |
-
-*ESP-NOW provides deterministic low-latency for safety-critical alerts while Mesh-Lite handles high-throughput telemetry*
+**Real-time monitoring:** [http://15.188.29.195:1880/dashboard/bumblebee](http://15.188.29.195:1880/dashboard/bumblebee)
 
 ---
 
-## 🚦 Current Status (v0.2.0)
+## ⚡ Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Self-organizing Mesh** | Automatic root election, multi-hop routing, self-healing topology |
+| **Dual-protocol Architecture** | WiFi Mesh-Lite (TX↔TX) + ESP-NOW (TX↔RX) |
+| **Real-time Telemetry** | MQTT over TLS to cloud dashboard |
+| **OTA Firmware Updates** | Over-the-air updates with SHA256 verification |
+| **Automatic Localization** | Scooter detection and position tracking |
+| **Safety-first Design** | Hardware alerts, emergency shutoff, <10ms response |
+| **Dual-layer Encryption** | MQTT TLS + ESP-NOW MSK/LSK encryption |
+
+---
+
+## 📊 Performance Metrics
+
+| Protocol | Use Case | Throughput | Latency | Security |
+|----------|----------|------------|---------|----------|
+| **WiFi Mesh-Lite** | TX↔TX Communication | 13+ Mbps | 3-5 ms | WPA2 |
+| **ESP-NOW** | TX↔RX Low Latency | 40 Kbps | 7 ms | MSK+LSK |
+| **MQTT/TLS** | Cloud Connectivity | N/A | ~50 ms | TLS 1.2 |
+
+---
+
+## 🏗️ System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                AWS Lightsail Cloud Infrastructure           │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │
+│  │Mosquitto│  │InfluxDB │  │Telegraf │  │Node-RED │        │
+│  │ (MQTT)  │  │  (DB)   │  │(Bridge) │  │(Dashboard│        │
+│  │ :8883   │  │ :8086   │  │         │  │  :1880) │        │
+│  └────┬────┘  └─────────┘  └─────────┘  └────┬────┘        │
+└───────┼──────────────────────────────────────┼─────────────┘
+        │ MQTT/TLS                             │ HTTP (OTA)
+        │                                      │
+┌───────▼──────────────────────────────────────▼─────────────┐
+│                      WiFi Router                            │
+└───────┬─────────────────────────────────────────────────────┘
+        │
+┌───────▼───────┐
+│  ROOT/MASTER  │◄─── Any TX can become root (automatic election)
+│     (TX1)     │
+└───┬───────┬───┘
+    │       │
+    │  ESP-NOW (<10ms)
+    │       │
+    │  ┌────▼────┐
+    │  │   RX1   │◄─── ROOT's paired receiver
+    │  └─────────┘
+    │
+    │ WiFi Mesh-Lite
+    │
+┌───▼────┐     ┌─────────┐
+│  TX2   │     │   TX3   │
+└───┬────┘     └────┬────┘
+    │               │
+    │ ESP-NOW       │ ESP-NOW
+    │               │
+┌───▼────┐     ┌────▼────┐
+│  RX2   │     │   RX3   │
+└────────┘     └─────────┘
+```
+
+---
+
+## 🚦 Current Status (v0.3.0)
 
 ### ✅ Implemented Features
-- Hardware sensor readings (voltage, current, temperature)
-- Mesh network formation and self-healing
-- ESP-NOW peer-to-peer communication
-- Automatic scooter localization
-- Dynamic telemetry publishing (on-change + periodic)
-- Alert system with immediate local response
-- MQTT integration for cloud visualization
-- Real-time dashboard monitoring
-- RX leaving charging pad detection
-- Alert reconnection timeout
-- Security features (ESP-NOW encryption, MQTT TLS)
 
-### ⚠️ Known Limitations
-- Fully charged scenario incomplete
-- WiFi power saving features disabled for performance
-- ESP32 behaving differently than ESP32-C6 (random disconnections and beacon validation)
-- Dashboard input to be extended (individual switches - set alert thresholds - display waveform for autotuning)
-- OTA updates not implemented
+- **Core Functionality**
+  - Hardware sensor readings (voltage, current, temperature)
+  - Mesh network formation with self-healing
+  - ESP-NOW peer-to-peer encrypted communication
+  - Automatic scooter localization (sequential TX switching)
+  - Dynamic telemetry (on-change + periodic publishing)
 
-### 🔄 Testing Required
-Edge cases and real-world scenarios need validation before production deployment.
+- **Safety & Alerts**
+  - Immediate local response (<10ms)
+  - Alert propagation through mesh
+  - RX departure detection
+  - Configurable alert thresholds
+
+- **Security**
+  - MQTT over TLS (port 8883)
+  - ESP-NOW dual encryption (MSK + LSK)
+  - HTTP Basic Authentication for OTA
+  - Certificate validation
+
+- **OTA Updates**
+  - ROOT node firmware download via HTTP
+  - SHA256 integrity verification
+  - Automatic partition switching
+  - Rollback support on boot failure
+
+### 🔄 Planned Features
+
+- **Mesh OTA Coordination**: Sequential/parallel firmware updates for all nodes (requires nginx integration)
+- **Fully Charged Detection**: Complete charging cycle management
+- **Dashboard Enhancements**: Individual TX switches, threshold configuration, waveform display
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Hardware**: ESP32 development boards
-- **Software**: ESP-IDF v5.5.1+
+
+- **Hardware**: ESP32-C6 (recommended) or ESP32 classic
+- **Software**: ESP-IDF v5.5.1+, Python 3.7+
 - **Tools**: VSCode with ESP-IDF extension
 
 ### Installation
 
-1. **Setup ESP-IDF Environment**
-   - [ESP-IDF Installation Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html)
-   - [VSCode Extension Setup](https://github.com/espressif/vscode-esp-idf-extension/blob/master/docs/tutorial/install.md)
+```bash
+# Clone repository
+git clone https://github.com/yourusername/bumblebee-mesh.git
+cd bumblebee-mesh
 
-2. **Clone Repository**
-   ```bash
-   git clone https://github.com/yourusername/bumblebee-mesh.git
-   cd bumblebee-mesh
-   ```
+# Configure Unit ID (one-time setup per device)
+# Edit flash_unit_id.py with your ESP-IDF path, then:
+# VSCode: Ctrl+Shift+P → Tasks: Run Task → Flash Unit ID
 
-3. **Configure Unit**
-- Configure flash_unit_id.py with your ESP-IDF path
-- Use Ctrl+, and look for esp-idf
-- Change 'C:\\Users\\degan\\esp\\v5.5.1\\esp-idf' to your path
-- Use Ctrl+Shift+P and run Task > Flash Unit ID
-- Set unique UNIT_ID for each device (must be done once!)
+# Configure WiFi
+idf.py menuconfig
+# Navigate to: Component config → Bumblebee Configuration
+# Set SSID and Password
 
-4. **Build & Flash**
-   ```bash
-   idf.py build
-   idf.py -p /dev/ttyUSB0 flash monitor
-   ```
+# Build and flash
+idf.py build
+idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+### Verify Operation
+
+```
+I (XXX) MAIN: ========================================
+I (XXX) MAIN:   Bumblebee WiFi Mesh
+I (XXX) MAIN:   Firmware Version: v0.3.0
+I (XXX) MAIN:   Build Date: YYYY-MM-DD HH:MM:SS
+I (XXX) MAIN: ========================================
+I (XXX) wifiMesh: Mesh network formed
+I (XXX) MQTT_CLIENT: Connected to broker (TLS)
+```
 
 ---
 
-## 🏗️ Architecture
+## 📡 MQTT Topics
 
-### System Overview
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Cloud Dashboard (MQTT)                    │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-              ┌───────▼────────┐
-              │  WiFi Router   │
-              └───────┬────────┘
-                      │
-              ┌───────▼────────┐
-              │  ROOT/MASTER   │ ◄─── Any TX can be root
-              │    (TX1)       │      (Automatic election)
-              └───┬────────┬───┘
-                  │        │
-        Mesh-Lite │        │ ESP-NOW
-                  │        │ (<10ms)
-                  │   ┌────▼────┐
-                  │   │   RX1   │ ◄─── ROOT's own RX
-                  │   └─────────┘
-                  │
-         ┌────────▼──────────┐
-         │                   │
-    ┌────▼────┐         ┌────▼────┐
-    │   TX2   │         │   TX3   │
-    └────┬────┘         └────┬────┘
-         │                   │  
-  ESP-NOW│                   │ESP-NOW  
-   (<10ms)                   │(<10ms)
-         │                   │  
-    ┌────▼────┐         ┌────▼────┐
-    │   RX2   │         │   RX3   │
-    └─────────┘         └─────────┘
+| Topic | Direction | Description |
+|-------|-----------|-------------|
+| `bumblebee/{unit_id}/dynamic` | ESP32 → Cloud | Real-time telemetry |
+| `bumblebee/{unit_id}/alerts` | ESP32 → Cloud | Safety alerts |
+| `bumblebee/{unit_id}/ota/status` | ESP32 → Cloud | OTA progress updates |
+| `bumblebee/control` | Cloud → ESP32 | Global ON/OFF control |
+| `bumblebee/ota/start` | Cloud → ESP32 | OTA trigger command |
+
+---
+
+## 🔧 Configuration
+
+### Alert Thresholds
+
+```c
+// main/include/util.h
+#define OVERCURRENT_TX      2.2   // Amperes
+#define OVERVOLTAGE_TX     80.0   // Volts
+#define OVERTEMPERATURE_TX 50.0   // Celsius
 ```
 
-### Communication Protocols
+### MQTT Broker
 
-#### WiFi Mesh-Lite (TX ↔ TX)
-- **Purpose**: Inter-station communication & data aggregation
-- **Performance**: 13+ Mbps throughput, 3-5ms latency
-- **Features**: Self-healing, multi-hop support, automatic root election
-- **Documentation**: [ESP Mesh-Lite Guide](https://docs.espressif.com/projects/esp-techpedia/en/latest/esp-friends/solution-introduction/mesh/mesh-lite-solution.html)
-
-#### ESP-NOW (TX ↔ RX)
-- **Purpose**: Low-latency scooter communication & safety alerts
-- **Performance**: 40 Kbps throughput, ~7ms latency, 0% packet loss
-- **Features**: Connectionless, peer-to-peer, <10ms alert response
-- **Documentation**: [ESP-NOW API Reference](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/network/esp_now.html)
-
-### Data Flow
-
-1. **Sensor Reading** (100Hz)
-   ```
-   RX Sensors → ESP-NOW → TX → Mesh-Lite → ROOT → MQTT → Dashboard
-   ```
-
-2. **Alert Response** (<10ms)
-   ```
-   Alert Detection → Local Shutoff → ESP-NOW Alert → TX Action → Mesh Propagation
-   ```
-
-3. **Control Commands**
-   ```
-   Dashboard → MQTT → ROOT → Mesh → Target TX → ESP-NOW → RX
-   ```
+```c
+// main/include/mqtt_client_manager.h
+#define MQTT_BROKER_HOST "15.188.29.195"
+#define MQTT_BROKER_PORT 8883
+#define MQTT_USERNAME "bumblebee"
+#define MQTT_PASSWORD "bumblebee2025"
+```
 
 ---
 
 ## 📦 Project Structure
 
 ```
-BumblebeeWiFiMeshLite/
+bumblebee-mesh/
 ├── main/
-│   ├── include/           # Header files
-│   │   ├── peer.h        # Peer management
-│   │   ├── wifiMesh.h    # Mesh networking
-│   │   └── mqtt_client_manager.h
-│   ├── main.c            # Entry point & initialization
-│   ├── wifiMesh.c        # Mesh-Lite & ESP-NOW
-│   ├── peer.c            # Peer list management
+│   ├── include/              # Header files
+│   │   ├── ota_manager.h     # OTA update management
+│   │   ├── mqtt_client_manager.h
+│   │   ├── wifiMesh.h        # Mesh networking
+│   │   ├── peer.h            # Peer management
+│   │   └── util.h            # Configuration & utilities
+│   ├── main.c                # Entry point
+│   ├── ota_manager.c         # OTA implementation
 │   ├── mqtt_client_manager.c # MQTT publishing
-│   ├── aux_ctu_hw.c      # TX hardware interface
-│   ├── cru_hw.c          # RX hardware interface
-│   └── leds.c            # Status indicators
-├── sdkconfig.defaults     # Optimized ESP32 configuration
-├── dependencies.lock      # Component versions
-└── CMakeLists.txt        # Build configuration
+│   ├── wifiMesh.c            # Mesh-Lite & ESP-NOW
+│   ├── peer.c                # Peer list management
+│   └── ...
+├── Dashboard/                # Cloud infrastructure
+│   ├── docker-compose.yml    # Service orchestration
+│   ├── AWS-DEPLOYMENT.md     # Deployment guide
+│   └── README.md             # Dashboard documentation
+├── README.md                 # This file
+├── README-FWextensive.md     # Detailed firmware docs
+└── version.txt               # Current version
 ```
 
 ---
 
-## 📡 MQTT Topics & Payloads
+## 📚 Documentation
 
-### Topic Structure
-```
-bumblebee/
-├── {unit_id}/
-│   ├── dynamic          # Telemetry (30s intervals or on-change)
-│   └── alerts           # Safety alerts (immediate)
-└── control              # Global commands
-```
-
-### Dynamic Payload Example
-```json
-{
-  "unit_id": 1,
-  "tx": {
-    "mac": "AA:BB:CC:DD:EE:FF",
-    "id": 1,
-    "status": 2,
-    "voltage": 48.5,
-    "current": 1.85,
-    "temp1": 35.2,
-    "temp2": 33.8
-  },
-  "rx": {
-    "mac": "11:22:33:44:55:66", 
-    "id": 101,
-    "status": 1,
-    "voltage": 52.3,
-    "current": 1.75,
-    "temp1": 38.5,
-    "temp2": 37.2
-  }
-}
-```
-
-### Alert Thresholds
-
-| Alert Type | TX Threshold | RX Threshold | Action |
-|------------|--------------|--------------|--------|
-| Overtemperature | >50°C | >60°C | Immediate shutoff |
-| Overcurrent | >2.2A | >2.0A | Immediate shutoff |
-| Overvoltage | >80V | >100V | Immediate shutoff |
-| Foreign Object | Active | N/A | Immediate shutoff |
+| Document | Description |
+|----------|-------------|
+| [README-FWextensive.md](README-FWextensive.md) | Detailed firmware architecture, APIs, and procedures |
+| [Dashboard/README.md](Dashboard/README.md) | Dashboard setup and MQTT configuration |
+| [Dashboard/AWS-DEPLOYMENT.md](Dashboard/AWS-DEPLOYMENT.md) | Production deployment guide |
 
 ---
 
-## 🔧 Configuration
+## 🔐 Access Credentials
 
-### WiFi Credentials
-```bash
-idf.py menuconfig
-# Navigate to: Example Configuration
-# Set Router SSID and Password
-```
+### Production Services
 
-### Alert Limits
-```c
-// Edit main/include/util.h
-#define OVERCURRENT_TX      2.2   // Amperes
-#define OVERVOLTAGE_TX     80.0   // Volts  
-#define OVERTEMPERATURE_TX 50.0   // Celsius
-```
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Dashboard | http://15.188.29.195:1880/dashboard/bumblebee | — |
+| Node-RED Editor | http://15.188.29.195:1880 | admin / bumblebee2025 |
+| InfluxDB | http://15.188.29.195:8086 | admin / bumblebee2025 |
+| MQTT (TLS) | mqtts://15.188.29.195:8883 | bumblebee / bumblebee2025 |
 
-### MQTT Broker
-```c
-// Edit main/include/mqtt_client_manager.h
-#define MQTT_BROKER_URI "mqtts://15.188.29.195:8883"
-```
+⚠️ **Security Note**: Change default credentials in production environments.
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+| Issue | Solution |
+|-------|----------|
+| Mesh not forming | Verify WiFi credentials, check router accessibility, ensure unique UNIT_ID |
+| MQTT connection failed | Check TLS certificate, verify port 8883 is open, test with `ping 15.188.29.195` |
+| ESP-NOW issues | Confirm peer channel alignment, check encryption keys match |
+| OTA fails | Verify SHA256 hash, check HTTP auth credentials, ensure sufficient heap memory |
 
-**Mesh Not Forming**
-- Verify all units use same WiFi credentials
-- Check router is accessible: `ping 192.168.1.1`
-- Ensure unique `UNIT_ID` per device
-
-**MQTT Connection Failed**
-- Test broker connectivity: `ping 15.188.29.195`
-- Verify URI format includes `mqtt://` prefix
-- Check firewall allows port 1883
-
-**ESP-NOW Issues**
-- Confirm peers added with matching channels
-- Check WiFi channel alignment with mesh
-- Monitor CRC errors in debug logs
-
-### Debug Commands
 ```bash
-# Monitor with timestamps
+# Debug commands
 idf.py monitor --timestamps
-
-# Full flash erase (clears NVS)
-idf.py erase_flash
-
-# Filter specific component logs
-idf.py monitor | grep "wifiMesh"
+idf.py monitor | grep "OTA"
+idf.py erase_flash  # Full NVS reset
 ```
 
 ---
 
-## 📚 References
+## 📈 Version History
 
-- [ESP Mesh-Lite Solution](https://docs.espressif.com/projects/esp-techpedia/en/latest/esp-friends/solution-introduction/mesh/mesh-lite-solution.html)
-- [ESP Mesh-Lite User Guide](https://github.com/espressif/esp-mesh-lite/blob/release/v1.0/components/mesh_lite/User_Guide.md)
-- [ESP-NOW Documentation](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/network/esp_now.html)
-- [ESP-IDF Programming Guide](https://docs.espressif.com/projects/esp-idf/en/latest/)
-
----
-
-## 🔐 Database Access
-
-For historical data access:
-- **URL**: http://15.188.29.195:8086
-- **Username**: `admin`
-- **Password**: `bumblebee2025`
+| Version | Date | Highlights |
+|---------|------|------------|
+| **v0.3.0** | Jan 2026 | OTA firmware updates, Node-RED dashboard integration |
+| v0.2.0 | Nov 2025 | Security hardening (TLS, ESP-NOW encryption) |
+| v0.1.0 | Oct 2025 | Initial release with mesh networking |
 
 ---
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
 
 ## 📞 Support
 
-For questions and support:
-- Open an issue on [GitHub Issues](https://github.com/yourusername/bumblebee-mesh/issues)
-- Contact the development team
+- **Issues**: [GitHub Issues](https://github.com/yourusername/bumblebee-mesh/issues)
+- **Documentation**: See linked guides above
 
 ---
 
-**Document Version:** 2.0  
-**Last Updated:** November 2025  
-**Firmware Version:** v0.2.0
+**🐝 BUMBLEBEE - Wireless Power Transfer Mesh Network**  
+**Version 0.3.0** | **ESP-IDF 5.5.1** | **January 2026**
