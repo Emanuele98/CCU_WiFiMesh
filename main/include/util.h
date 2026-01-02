@@ -25,6 +25,8 @@
 #include "esp_now.h"
 #include "esp_crc.h"
 
+#include "mqtt_client.h"
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -89,6 +91,8 @@
 
 //*Unit ID
 extern uint8_t UNIT_ID;
+
+extern esp_mqtt_client_handle_t mqtt_client;
 
 extern bool is_root_node;
 

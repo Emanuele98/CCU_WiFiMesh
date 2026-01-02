@@ -10,31 +10,6 @@
 static const char *TAG = "OTA_MANAGER";
 
 // ============================================================================
-// CA Certificate (same as MQTT - from mqtt_client_manager.c)
-// ============================================================================
-
-const char *ota_ca_cert = \
-"-----BEGIN CERTIFICATE-----\n" \
-"MIIDHjCCAgagAwIBAgIUXtfO/c6nxB+mxYUZ9MqXWKitiBcwDQYJKoZIhvcNAQEL\
-BQAwFjEUMBIGA1UEAwwLMTAuMjE4LjE4LjYwHhcNMjUxMjI2MTc0MzIxWhcNMjYx\
-MjI2MTc0MzIxWjAWMRQwEgYDVQQDDAsxMC4yMTguMTguNjCCASIwDQYJKoZIhvcN\
-AQEBBQADggEPADCCAQoCggEBALaH/vr1rx9ta8LmM9Rn66RXvqpGhxlRMlkx00i3\
-cObtBnEWh4xJlqZ3lBtugd9pVgPJvnjb/YkcZBbZEJ0iKU7VIVKVuQ2KhhdPO3bL\
-+M7wg+gYtwjaHFI+EhZTIGuiG2fHgiZhf21csZMFiS+yAZyoQkUxfyo9S0PVzNvD\
-Wcgc33h9LYGCMGiWw5ZIliUwMbFzKc5CrSA/FFVqFhG8qJk2Touc7fnWY1cYFKq2\
-d5OXBSDdhJAY5Ob17/h+uZWOJlZM2xSiUvjqJhajd21Nhg3d3X8Jb240UXch4E+F\
-fKNO1b7SR4wkjPeCv8r98AoDSEyp0ffmlZM9VhyTtKDcGiMCAwEAAaNkMGIwHQYD\
-VR0OBBYEFKffRqBUQZnB+xHApPlFI2YBqcnhMB8GA1UdIwQYMBaAFKffRqBUQZnB\
-+xHApPlFI2YBqcnhMA8GA1UdEwEB/wQFMAMBAf8wDwYDVR0RBAgwBocECtoSBjAN\
-BgkqhkiG9w0BAQsFAAOCAQEAPAAVmv33qDzy43S0lKUnCJYU4uEE8NGNV2C3Uyti\
-6pLA/cvmdsoR9+9FuGUm49M3dNYaGzzNEmceE/ZJHlXbQjSBfQTv9DMnmUTq1fCL\
-YqHxP2gC3c5pumnT6YlWVoH5nOSpSoOTFl2x+EaAcI75G84eiaIFiWjg317bWswW\
-vSXcXC+wGwerX2zp5g3LuwAX1K2dq9fgZ2lhLacnc55Bbppr3QrtUt9P50oFKnS4\
-Ip8Nk/gluOxu2QbSNhJLT8lZJ5IOdq6Xe8vUoCEn6IbZlho5VqjlGyz8/VyW4BgN\
-lnjhHW4KdQ2U28I21gLcPA6YlGkGYonzpF9UTbKtmIJ/lw==\n" \
-"-----END CERTIFICATE-----\n";
-
-// ============================================================================
 // PRIVATE VARIABLES
 // ============================================================================
 
@@ -44,9 +19,6 @@ static TaskHandle_t s_ota_task_handle = NULL;
 static ota_completion_cb_t s_completion_callback = NULL;
 static char s_expected_sha256[OTA_SHA256_HEX_LEN + 1] = {0};
 static bool s_initialized = false;
-
-esp_mqtt_client_handle_t mqtt_client;
-extern uint8_t UNIT_ID;
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -64,9 +36,9 @@ static void ota_publish_status(const char* status, int progress, int bytes_writt
 
         ESP_LOGI(TAG, "Publishing OTA status: %s", payload);
     
-    //if (mqtt_client) {
+    if (mqtt_client) {
         esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 1, 0);
-    //}
+    }
 }
 
 /**

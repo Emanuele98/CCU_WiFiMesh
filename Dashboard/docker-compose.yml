@@ -59,7 +59,7 @@ services:
   # ===============================================
   # TELEGRAF - Data Bridge (MQTT to InfluxDB)
   # ===============================================
-    telegraf:
+  telegraf:
     image: telegraf:1.28
     container_name: bumblebee-telegraf
     volumes:
@@ -78,20 +78,23 @@ services:
     restart: unless-stopped
 
   # ===============================================
-  # NODE-RED - Real-time Dashboard
+  # NODE-RED - Real-time Dashboard + OTA Server
   # ===============================================
   nodered:
     image: nodered/node-red:latest
     container_name: bumblebee-nodered
     ports:
-      - "1880:1880"
+      - "1880:1880"      # HTTP (dashboard + OTA endpoints)
     volumes:
       - nodered_data:/data
+      - nodered_ota:/data/ota  
+      - ./nodered/settings.js:/data/settings.js:ro
     environment:
       - TZ=Europe/Rome
       - NODE_RED_ENABLE_PROJECTS=false
       - MQTT_USERNAME=nodered
       - MQTT_PASSWORD=bumblebee2025
+      - NODE_RED_CREDENTIAL_SECRET=bumblebee_secret_key_2025
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -99,6 +102,10 @@ services:
       bumblebee-network:
         ipv4_address: 172.20.0.5
     restart: unless-stopped
+    command: >
+      sh -c "mkdir -p /data/ota/versions && 
+             chmod -R 755 /data/ota &&
+             npm start -- --userDir /data"
 
 # ===============================================
 # NETWORKS
@@ -123,4 +130,6 @@ volumes:
   influxdb_config:
     driver: local
   nodered_data:
+    driver: local
+  nodered_ota: 
     driver: local

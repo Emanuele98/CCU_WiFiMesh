@@ -34,14 +34,9 @@
 #include "esp_https_ota.h"
 #include "esp_app_format.h"
 #include "esp_system.h"
-
-#include "mqtt_client.h"
-
 #include "mbedtls/sha256.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "util.h"
 
 // ============================================================================
 // CONFIGURATION
@@ -211,9 +206,7 @@ typedef struct {
     uint8_t command;               /**< 0=start, 1=status, 2=abort */
 } ota_mesh_command_t;
 
-#ifdef __cplusplus
-}
-#endif
+
 
 // ============================================================================
 // QUICK REFERENCE

@@ -4,6 +4,8 @@ static const char *TAG = "UTIL";
 
 uint8_t UNIT_ID = 0; // Default unit ID, will be set from NVS
 
+esp_mqtt_client_handle_t mqtt_client;
+
 bool is_root_node = false;
 
 bool internalFWTEST = false;

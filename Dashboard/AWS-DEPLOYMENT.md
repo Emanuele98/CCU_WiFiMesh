@@ -1,3 +1,8 @@
+// add these two commands on ssh lightsail instance
+
+docker exec -u 0 bumblebee-nodered mkdir -p /data/ota/versions
+docker exec -u 0 bumblebee-nodered chown -R node-red:node-red /data/ota
+
 # 🚀 AWS LIGHTSAIL DEPLOYMENT GUIDE - SECURE PRODUCTION SETUP
 
 ## Complete deployment guide for Bumblebee monitoring system on AWS Lightsail with TLS/SSL security

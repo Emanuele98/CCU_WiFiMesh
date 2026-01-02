@@ -97,8 +97,7 @@
         "y": 140,
         "wires": [
             [
-                "update_ui",
-                "debug_dynamic"
+                "update_ui"
             ]
         ]
     },
@@ -198,15 +197,17 @@
         "id": "debug_dynamic",
         "type": "debug",
         "z": "bumblebee_tab",
-        "name": "Debug",
+        "name": "Debug Dynamic",
         "active": true,
         "tosidebar": true,
         "console": false,
         "tostatus": false,
         "complete": "payload",
         "targetType": "msg",
-        "x": 790,
-        "y": 60,
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 660,
+        "y": 120,
         "wires": []
     },
     {
@@ -394,35 +395,10 @@
         "resendOnRefresh": false,
         "templateScope": "local",
         "className": "",
-        "x": 170,
-        "y": 620,
+        "x": 150,
+        "y": 720,
         "wires": [
             []
-        ]
-    },
-    {
-        "id": "ui_template_ota_versions",
-        "type": "ui-template",
-        "z": "bumblebee_tab",
-        "group": "ui_group_ota_versions",
-        "page": "",
-        "ui": "",
-        "name": "Version History Display",
-        "order": 1,
-        "width": "6",
-        "height": "6",
-        "format": "<template>\n  <v-card class=\"version-history-card\">\n    <v-card-title class=\"text-h6\">\n      <v-icon left color=\"primary\">mdi-history</v-icon>\n      Firmware Versions\n    </v-card-title>\n    \n    <v-card-text>\n      <v-list dense v-if=\"versions && versions.length > 0\">\n        <v-list-item\n          v-for=\"(version, index) in versions\"\n          :key=\"index\"\n          :class=\"{ 'primary--text': index === 0 }\"\n        >\n          <v-list-item-avatar>\n            <v-icon :color=\"index === 0 ? 'primary' : 'grey'\">\n              {{ index === 0 ? 'mdi-star' : 'mdi-circle-small' }}\n            </v-icon>\n          </v-list-item-avatar>\n          \n          <v-list-item-content>\n            <v-list-item-title>\n              {{ version.filename }}\n              <v-chip\n                x-small\n                outlined\n                class=\"ml-2\"\n                v-if=\"index === 0\"\n              >\n                Latest\n              </v-chip>\n            </v-list-item-title>\n            <v-list-item-subtitle class=\"text-caption\">\n              {{ formatBytes(version.size) }} | \n              {{ formatTimestamp(version.timestamp) }}\n            </v-list-item-subtitle>\n            <v-list-item-subtitle class=\"text-caption sha256-preview\">\n              SHA256: {{ version.sha256.substring(0, 16) }}...\n            </v-list-item-subtitle>\n          </v-list-item-content>\n          \n          <v-list-item-action>\n            <v-btn\n              icon\n              small\n              @click=\"selectVersion(version)\"\n              :disabled=\"index === 0\"\n            >\n              <v-icon small>mdi-download</v-icon>\n            </v-btn>\n          </v-list-item-action>\n        </v-list-item>\n      </v-list>\n      \n      <v-alert\n        v-else\n        type=\"info\"\n        dense\n        text\n      >\n        No firmware versions available. Upload a firmware file to get started.\n      </v-alert>\n    </v-card-text>\n  </v-card>\n</template>\n\n<script>\nexport default {\n  data() {\n    return {\n      versions: []\n    }\n  },\n  watch: {\n    msg: {\n      immediate: true,\n      handler(msg) {\n        if (msg && msg.payload && msg.payload.versions) {\n          this.versions = msg.payload.versions;\n        }\n      }\n    }\n  },\n  methods: {\n    selectVersion(version) {\n      this.send({ payload: { action: 'select', version: version } });\n    },\n    \n    formatBytes(bytes) {\n      if (bytes === 0) return '0 Bytes';\n      const k = 1024;\n      const sizes = ['Bytes', 'KB', 'MB', 'GB'];\n      const i = Math.floor(Math.log(bytes) / Math.log(k));\n      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];\n    },\n    \n    formatTimestamp(timestamp) {\n      return new Date(timestamp).toLocaleString();\n    }\n  }\n}\n</script>\n\n<style scoped>\n.version-history-card {\n  height: 100%;\n}\n.sha256-preview {\n  font-family: 'Courier New', monospace;\n  font-size: 0.75em;\n}\n</style>",
-        "storeOutMessages": false,
-        "passthru": false,
-        "resendOnRefresh": true,
-        "templateScope": "local",
-        "className": "",
-        "x": 810,
-        "y": 580,
-        "wires": [
-            [
-                "version_selector"
-            ]
         ]
     },
     {
@@ -444,8 +420,8 @@
         "payloadType": "str",
         "topic": "ota/trigger",
         "topicType": "str",
-        "x": 160,
-        "y": 660,
+        "x": 140,
+        "y": 780,
         "wires": [
             [
                 "ota_trigger_handler"
@@ -463,7 +439,7 @@
         "order": 2,
         "width": "8",
         "height": "4",
-        "format": "<template>\n  <v-card class=\"ota-progress-card\">\n    <v-card-title class=\"text-h6\">\n      <v-icon left :color=\"statusColor\">{{ statusIcon }}</v-icon>\n      OTA Update Status\n    </v-card-title>\n    \n    <v-card-text>\n      <div v-if=\"!otaActive\">\n        <v-alert type=\"info\" dense text>\n          No OTA update in progress. Upload firmware and click \"Trigger OTA Update\" to start.\n        </v-alert>\n      </div>\n      \n      <div v-else>\n        <v-chip\n          :color=\"statusColor\"\n          text-color=\"white\"\n          class=\"mb-3\"\n        >\n          {{ statusText }}\n        </v-chip>\n        \n        <v-progress-linear\n          :value=\"progress\"\n          height=\"25\"\n          :color=\"statusColor\"\n          striped\n          :indeterminate=\"progress === 0\"\n        >\n          <template v-slot:default=\"{ value }\">\n            <strong>{{ Math.ceil(value) }}%</strong>\n          </template>\n        </v-progress-linear>\n        \n        <v-list dense class=\"mt-3\">\n          <v-list-item\n            v-for=\"(log, index) in logs\"\n            :key=\"index\"\n            dense\n          >\n            <v-list-item-icon>\n              <v-icon\n                small\n                :color=\"log.type === 'error' ? 'error' : log.type === 'success' ? 'success' : 'info'\"\n              >\n                {{ log.type === 'error' ? 'mdi-alert-circle' : \n                   log.type === 'success' ? 'mdi-check-circle' : 'mdi-information' }}\n              </v-icon>\n            </v-list-item-icon>\n            <v-list-item-content>\n              <v-list-item-subtitle class=\"text-caption\">\n                {{ log.timestamp }} | {{ log.message }}\n              </v-list-item-subtitle>\n            </v-list-item-content>\n          </v-list-item>\n        </v-list>\n      </div>\n    </v-card-text>\n  </v-card>\n</template>\n\n<script>\nexport default {\n  data() {\n    return {\n      otaActive: false,\n      progress: 0,\n      statusText: 'Idle',\n      statusColor: 'grey',\n      statusIcon: 'mdi-sleep',\n      logs: []\n    }\n  },\n  watch: {\n    msg: {\n      immediate: true,\n      handler(msg) {\n        if (msg && msg.payload) {\n          if (msg.payload.action === 'start') {\n            this.otaActive = true;\n            this.progress = 0;\n            this.statusText = 'Starting OTA...';\n            this.statusColor = 'primary';\n            this.statusIcon = 'mdi-progress-upload';\n            this.addLog('info', 'OTA update initiated');\n          }\n          else if (msg.payload.action === 'progress') {\n            this.progress = msg.payload.progress || 0;\n            this.statusText = msg.payload.status || 'In progress...';\n            if (msg.payload.message) {\n              this.addLog('info', msg.payload.message);\n            }\n          }\n          else if (msg.payload.action === 'complete') {\n            this.progress = 100;\n            this.statusText = 'Complete';\n            this.statusColor = 'success';\n            this.statusIcon = 'mdi-check-circle';\n            this.addLog('success', msg.payload.message || 'OTA update completed successfully');\n            setTimeout(() => {\n              this.otaActive = false;\n              this.logs = [];\n            }, 5000);\n          }\n          else if (msg.payload.action === 'error') {\n            this.statusText = 'Error';\n            this.statusColor = 'error';\n            this.statusIcon = 'mdi-alert-circle';\n            this.addLog('error', msg.payload.message || 'OTA update failed');\n          }\n        }\n      }\n    }\n  },\n  methods: {\n    addLog(type, message) {\n      const timestamp = new Date().toLocaleTimeString();\n      this.logs.unshift({ type, message, timestamp });\n      if (this.logs.length > 10) {\n        this.logs.pop();\n      }\n    }\n  }\n}\n</script>\n\n<style scoped>\n.ota-progress-card {\n  height: 100%;\n}\n</style>",
+        "format": "<template>\n  <v-card class=\"ota-progress-card\">\n    <v-card-title class=\"text-h6\">\n      <v-icon left :color=\"statusColor\">{{ statusIcon }}</v-icon>\n      OTA Update Status\n    </v-card-title>\n\n    <v-card-text>\n      <div v-if=\"!otaActive\">\n        <v-alert type=\"info\" dense text>\n          No OTA update in progress. Upload firmware and click \"Trigger OTA Update\" to start.\n        </v-alert>\n      </div>\n\n      <div v-else>\n        <v-chip :color=\"statusColor\" text-color=\"white\" class=\"mb-3\">\n          {{ statusText }}\n        </v-chip>\n\n        <v-progress-linear :model-value=\"progress\" height=\"25\" :color=\"progressColor\" striped>\n          <template v-slot:default>\n            <strong>{{ progress }}%</strong>\n          </template>\n        </v-progress-linear>\n\n        <div v-if=\"nodes.length > 1\" class=\"mt-3\">\n          <div class=\"text-subtitle-2 mb-2\">All Nodes:</div>\n          <v-chip v-for=\"node in nodes\" :key=\"node.id\" small outlined class=\"mr-1 mb-1\"\n            :color=\"getNodeColor(node.status)\">\n            Unit {{ node.id }}: {{ node.progress }}%\n          </v-chip>\n        </div>\n\n        <v-list dense class=\"mt-3\" style=\"max-height: 150px; overflow-y: auto;\">\n          <v-list-item v-for=\"(log, index) in logs\" :key=\"index\" dense>\n            <v-list-item-icon>\n              <v-icon small :color=\"log.type === 'error' ? 'error' : log.type === 'success' ? 'success' : 'info'\">\n                {{ log.type === 'error' ? 'mdi-alert-circle' :\n                log.type === 'success' ? 'mdi-check-circle' : 'mdi-information' }}\n              </v-icon>\n            </v-list-item-icon>\n            <v-list-item-content>\n              <v-list-item-subtitle class=\"text-caption\">\n                {{ log.timestamp }} | {{ log.message }}\n              </v-list-item-subtitle>\n            </v-list-item-content>\n          </v-list-item>\n        </v-list>\n      </div>\n    </v-card-text>\n  </v-card>\n</template>\n\n<script>\n  export default {\n  data() {\n    return {\n      otaActive: false,\n      progress: 0,\n      statusText: 'Idle',\n      statusColor: 'grey',\n      statusIcon: 'mdi-sleep',\n      progressColor: 'primary',\n      logs: [],\n      nodes: []\n    }\n  },\n  watch: {\n    msg: {\n      immediate: true,\n      handler(msg) {\n        if (!msg || !msg.payload) return;\n        \n        const p = msg.payload;\n        \n        if (p.nodes) this.nodes = p.nodes;\n        \n        if (p.action === 'start') {\n          this.otaActive = true;\n          this.progress = 0;\n          this.statusText = p.status || 'Starting OTA...';\n          this.statusColor = 'primary';\n          this.progressColor = 'primary';\n          this.statusIcon = 'mdi-progress-upload';\n          this.addLog('info', p.message || 'OTA update initiated');\n        }\n        else if (p.action === 'progress') {\n          this.otaActive = true;\n          this.progress = Number(p.progress) || 0;\n          this.statusText = p.status || 'In progress...';\n          this.statusColor = 'warning';\n          this.progressColor = 'warning';\n          this.statusIcon = 'mdi-progress-download';\n          if (p.message) this.addLog('info', p.message);\n        }\n        else if (p.action === 'complete') {\n          this.progress = 100;\n          this.statusText = p.status || 'Complete';\n          this.statusColor = 'success';\n          this.progressColor = 'success';\n          this.statusIcon = 'mdi-check-circle';\n          this.addLog('success', p.message || 'OTA update completed');\n          setTimeout(() => {\n            this.otaActive = false;\n            this.logs = [];\n            this.nodes = [];\n          }, 10000);\n        }\n        else if (p.action === 'error') {\n          this.statusText = p.status || 'Error';\n          this.statusColor = 'error';\n          this.progressColor = 'error';\n          this.statusIcon = 'mdi-alert-circle';\n          this.addLog('error', p.message || 'OTA update failed');\n        }\n      }\n    }\n  },\n  methods: {\n    addLog(type, message) {\n      const timestamp = new Date().toLocaleTimeString();\n      this.logs.unshift({ type, message, timestamp });\n      if (this.logs.length > 15) this.logs.pop();\n    },\n    getNodeColor(status) {\n      switch(status) {\n        case 'success': return 'success';\n        case 'failed': return 'error';\n        case 'downloading': return 'warning';\n        case 'verifying': return 'info';\n        default: return 'grey';\n      }\n    }\n  }\n}\n</script>\n\n<style scoped>\n  .ota-progress-card {\n    height: 100%;\n  }\n</style>",
         "storeOutMessages": false,
         "passthru": false,
         "resendOnRefresh": true,
@@ -631,10 +607,10 @@
         "type": "http response",
         "z": "bumblebee_tab",
         "name": "Error Response",
-        "statusCode": "",
+        "statusCode": "404",
         "headers": {},
-        "x": 700,
-        "y": 860,
+        "x": 760,
+        "y": 1020,
         "wires": []
     },
     {
@@ -684,10 +660,10 @@
         "id": "status_http_response",
         "type": "http response",
         "z": "bumblebee_tab",
-        "name": "",
-        "statusCode": "",
+        "name": "Send status",
+        "statusCode": "200",
         "headers": {},
-        "x": 790,
+        "x": 810,
         "y": 1120,
         "wires": []
     },
@@ -757,7 +733,7 @@
         "type": "function",
         "z": "bumblebee_tab",
         "name": "Process OTA Status",
-        "func": "// ota_status_processor function node\nconst payload = msg.payload;\nconst unitId = payload.unit_id || \"unknown\";\n\n// Store per-node status\nlet otaStatus = flow.get('otaStatus') || {};\notaStatus[unitId] = {\n    status: payload.status,\n    progress: payload.progress,\n    bytes: payload.bytes,\n    total: payload.total,\n    timestamp: Date.now()\n};\nflow.set('otaStatus', otaStatus);\n\n// Format for display\nlet displayText = \"\";\nfor (const [id, data] of Object.entries(otaStatus)) {\n    const progressBar = \"█\".repeat(Math.floor(data.progress / 10)) + \"░\".repeat(10 - Math.floor(data.progress / 10));\n    displayText += `Unit ${id}: ${data.status} [${progressBar}] ${data.progress}%\\n`;\n}\n\nmsg.payload = displayText;\nreturn msg;",
+        "func": "// Process OTA status from ESP32 and format for Vue template\nconst payload = msg.payload;\nconst unitId = String(payload.unit_id || \"unknown\");\nconst status = payload.status || \"unknown\";\nconst progress = Number(payload.progress) || 0;\nconst bytes = Number(payload.bytes) || 0;\nconst total = Number(payload.total) || 0;\n\n// Store per-node status in flow context\nlet otaStatus = flow.get('otaStatus') || {};\notaStatus[unitId] = {\n    status: status,\n    progress: progress,\n    bytes: bytes,\n    total: total,\n    timestamp: Date.now()\n};\nflow.set('otaStatus', otaStatus);\n\n// Determine action based on ESP32 status\nlet action;\nswitch(status) {\n    case 'starting':\n        action = 'start';\n        break;\n    case 'connecting':\n    case 'downloading':\n    case 'verifying':\n    case 'flashing':\n        action = 'progress';\n        break;\n    case 'success':\n        action = 'complete';\n        break;\n    case 'failed':\n        action = 'error';\n        break;\n    default:\n        action = 'progress';\n}\n\n// Build multi-node status summary\nlet nodesSummary = [];\nfor (const [id, data] of Object.entries(otaStatus)) {\n    if (Date.now() - data.timestamp < 60000) {\n        nodesSummary.push({\n            id: id,\n            status: data.status,\n            progress: data.progress\n        });\n    }\n}\n\n// Format message for Vue template\nmsg.payload = {\n    action: action,\n    progress: progress,\n    status: `Unit ${unitId}: ${status}`,\n    message: `Unit ${unitId}: ${status} - ${progress}% (${bytes}/${total} bytes)`,\n    unitId: unitId,\n    nodes: nodesSummary\n};\n\nnode.status({\n    fill: action === 'error' ? 'red' : action === 'complete' ? 'green' : 'yellow',\n    shape: 'dot',\n    text: `Unit ${unitId}: ${progress}%`\n});\n\nreturn msg;",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -777,7 +753,7 @@
         "type": "function",
         "z": "bumblebee_tab",
         "name": "Handle Version Selection",
-        "func": "// Handle version selection from UI\nif (msg.payload.action === 'select') {\n    const version = msg.payload.version;\n    \n    // Update latest firmware pointer\n    flow.set('latestFirmware', version);\n    \n    // Update symlink/copy\n    const latestLink = '/data/ota/firmware.bin';\n    const latestMetaLink = '/data/ota/firmware.json';\n    \n    try {\n        if (fs.existsSync(latestLink)) {\n            fs.unlinkSync(latestLink);\n        }\n        if (fs.existsSync(latestMetaLink)) {\n            fs.unlinkSync(latestMetaLink);\n        }\n        \n        // Copy selected version to latest\n        fs.copyFileSync(version.path, latestLink);\n        fs.writeFileSync(latestMetaLink, JSON.stringify(version, null, 2));\n        \n        node.status({ fill: \"green\", shape: \"dot\", text: `Selected ${version.version}` });\n        \n        msg.payload = {\n            success: true,\n            message: `Version ${version.version} selected as latest`\n        };\n    } catch (err) {\n        node.error(`Failed to select version: ${err.message}`);\n        msg.payload = {\n            success: false,\n            error: err.message\n        };\n    }\n}\n\nreturn msg;",
+        "func": "if (msg.payload.action === 'setActive' || msg.payload.action === 'select') {\n    const version = msg.payload.version;\n\n    const latestBin = '/data/ota/firmware.bin';\n    const latestMeta = '/data/ota/firmware.json';\n    const versionPath = `/data/ota/versions/${version.filename}`;\n\n    try {\n        if (!fs.existsSync(versionPath)) {\n            throw new Error(`Version file not found: ${versionPath}`);\n        }\n\n        // Remove existing files\n        if (fs.existsSync(latestBin)) fs.unlinkSync(latestBin);\n        if (fs.existsSync(latestMeta)) fs.unlinkSync(latestMeta);\n\n        // Copy selected version to latest\n        fs.copyFileSync(versionPath, latestBin);\n\n        // Update metadata\n        const metadata = {\n            filename: version.filename,\n            version: version.version || 'unknown',\n            size: version.size,\n            sha256: version.sha256,\n            timestamp: version.timestamp,\n            activatedAt: new Date().toISOString()\n        };\n        fs.writeFileSync(latestMeta, JSON.stringify(metadata, null, 2));\n\n        flow.set('latestFirmware', metadata);\n        flow.set('activeVersion', version.filename);\n\n        node.status({ fill: 'green', shape: 'dot', text: `Active: ${version.filename}` });\n\n        msg.payload = {\n            success: true,\n            feedback: `${version.filename} is now active for OTA`,\n            activeVersion: version.filename\n        };\n\n    } catch (err) {\n        node.error(`Failed: ${err.message}`);\n        msg.payload = {\n            success: false,\n            feedback: `Error: ${err.message}`\n        };\n    }\n\n    return msg;\n}\n\nreturn null;",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -793,10 +769,12 @@
                 "module": "path"
             }
         ],
-        "x": 890,
-        "y": 620,
+        "x": 990,
+        "y": 660,
         "wires": [
-            []
+            [
+                "ui_template_ota_versions"
+            ]
         ]
     },
     {
@@ -809,8 +787,8 @@
         "upload": true,
         "skipBodyParsing": false,
         "swaggerDoc": "",
-        "x": 110,
-        "y": 760,
+        "x": 130,
+        "y": 600,
         "wires": [
             [
                 "process_json_upload"
@@ -834,11 +812,105 @@
                 "module": "crypto"
             }
         ],
-        "x": 280,
-        "y": 720,
+        "x": 200,
+        "y": 660,
         "wires": [
             [
                 "ota_upload_handler"
+            ]
+        ]
+    },
+    {
+        "id": "194ccb08706018c0",
+        "type": "debug",
+        "z": "bumblebee_tab",
+        "name": "debug OTA",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 330,
+        "y": 1040,
+        "wires": []
+    },
+    {
+        "id": "5766e30a7bc167b8",
+        "type": "http in",
+        "z": "bumblebee_tab",
+        "name": "Download Firmware to PC",
+        "url": "/ota/download/:filename",
+        "method": "get",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 310,
+        "y": 1220,
+        "wires": [
+            [
+                "dcf3ced2f6dee7a2"
+            ]
+        ]
+    },
+    {
+        "id": "bef638c52ae15fb3",
+        "type": "http response",
+        "z": "bumblebee_tab",
+        "name": "Send file",
+        "statusCode": "200",
+        "headers": {},
+        "x": 780,
+        "y": 1200,
+        "wires": []
+    },
+    {
+        "id": "dcf3ced2f6dee7a2",
+        "type": "function",
+        "z": "bumblebee_tab",
+        "name": "Handle FW Downlad",
+        "func": "const filename = msg.req.params.filename;\nconst fs = global.get('fs');\nconst path = global.get('path') || require('path');\n\n// Security: sanitize filename\nconst sanitizedFilename = path.basename(filename);\nconst firmwarePath = `/data/ota/versions/${sanitizedFilename}`;\n\nif (!fs.existsSync(firmwarePath)) {\n    msg.statusCode = 404;\n    msg.payload = 'Firmware file not found';\n    return [null, msg];\n}\n\ntry {\n    const fileBuffer = fs.readFileSync(firmwarePath);\n    msg.payload = fileBuffer;\n    msg.headers = {\n        'Content-Type': 'application/octet-stream',\n        'Content-Disposition': `attachment; filename=\"${sanitizedFilename}\"`,\n        'Content-Length': fileBuffer.length\n    };\n    return [msg, null];\n} catch (err) {\n    msg.statusCode = 500;\n    msg.payload = 'Error reading firmware file';\n    return [null, msg];\n}",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 1220,
+        "wires": [
+            [
+                "bef638c52ae15fb3"
+            ],
+            [
+                "http_error_response"
+            ]
+        ]
+    },
+    {
+        "id": "ui_template_ota_versions",
+        "type": "ui-template",
+        "z": "bumblebee_tab",
+        "group": "ui_group_ota_versions",
+        "page": "",
+        "ui": "",
+        "name": "Version History Display",
+        "order": 1,
+        "width": "6",
+        "height": "6",
+        "format": "<template>\n  <v-card class=\"version-history-card\" flat>\n    <v-card-title class=\"text-subtitle-1 py-1\">\n      <v-icon small left color=\"primary\">mdi-history</v-icon>\n      Firmware Versions\n    </v-card-title>\n\n    <v-card-text class=\"py-0\">\n      <v-list dense class=\"py-0\" v-if=\"versions && versions.length > 0\">\n        <v-list-item v-for=\"(version, index) in versions\" :key=\"index\"\n          :class=\"{ 'active-version': version.filename === activeVersion }\" class=\"px-1 version-item\">\n          <v-icon small :color=\"version.filename === activeVersion ? 'success' : (index === 0 ? 'primary' : 'grey')\"\n            class=\"mr-2\">\n            {{ version.filename === activeVersion ? 'mdi-check-circle' : (index === 0 ? 'mdi-star' : 'mdi-circle-small')\n            }}\n          </v-icon>\n\n          <v-list-item-content class=\"py-1\">\n            <v-list-item-title class=\"text-body-2\">\n              {{ version.filename }}\n              <v-chip x-small outlined class=\"ml-1\" v-if=\"index === 0\" color=\"primary\">New</v-chip>\n              <v-chip x-small class=\"ml-1\" v-if=\"version.filename === activeVersion\" color=\"success\">Active</v-chip>\n            </v-list-item-title>\n            <v-list-item-subtitle class=\"text-caption compact-sub\">\n              {{ formatBytes(version.size) }} | {{ formatDate(version.timestamp) }} | {{ version.sha256 ?\n              version.sha256.substring(0, 12) + '...' : '' }}\n            </v-list-item-subtitle>\n          </v-list-item-content>\n\n          <div class=\"action-buttons\">\n            <v-btn icon x-small @click=\"downloadToPc(version)\" color=\"info\" title=\"Download to PC\">\n              <v-icon x-small>mdi-download</v-icon>\n            </v-btn>\n            <v-btn icon x-small @click=\"setActiveVersion(version)\" :disabled=\"version.filename === activeVersion\"\n              :color=\"version.filename === activeVersion ? 'success' : 'warning'\"\n              :title=\"version.filename === activeVersion ? 'Active' : 'Set Active'\">\n              <v-icon x-small>{{ version.filename === activeVersion ? 'mdi-check' : 'mdi-rocket-launch' }}</v-icon>\n            </v-btn>\n          </div>\n        </v-list-item>\n      </v-list>\n\n      <v-alert v-else type=\"info\" dense text class=\"my-1\">\n        No firmware available. Upload to get started.\n      </v-alert>\n\n      <v-snackbar v-model=\"snackbar\" :color=\"snackbarColor\" :timeout=\"2000\" bottom>\n        {{ snackbarText }}\n      </v-snackbar>\n    </v-card-text>\n  </v-card>\n</template>\n\n<script>\n  export default {\n  data() {\n    return {\n      versions: [],\n      activeVersion: null,\n      snackbar: false,\n      snackbarText: '',\n      snackbarColor: 'success'\n    }\n  },\n  watch: {\n    msg: {\n      immediate: true,\n      handler(msg) {\n        if (msg && msg.payload) {\n          if (msg.payload.versions) this.versions = msg.payload.versions.slice(0, 5);\n          if (msg.payload.activeVersion) this.activeVersion = msg.payload.activeVersion;\n          if (msg.payload.feedback) {\n            this.snackbarText = msg.payload.feedback;\n            this.snackbarColor = msg.payload.success ? 'success' : 'error';\n            this.snackbar = true;\n          }\n        }\n      }\n    }\n  },\n  methods: {\n    downloadToPc(version) {\n      const link = document.createElement('a');\n      link.href = `/ota/download/${version.filename}`;\n      link.download = version.filename;\n      document.body.appendChild(link);\n      link.click();\n      document.body.removeChild(link);\n      this.snackbarText = `Downloading ${version.filename}`;\n      this.snackbarColor = 'info';\n      this.snackbar = true;\n    },\n    setActiveVersion(version) {\n      this.send({ payload: { action: 'setActive', version: version } });\n      this.snackbarText = `Setting ${version.filename} as active...`;\n      this.snackbarColor = 'warning';\n      this.snackbar = true;\n    },\n    formatBytes(bytes) {\n      if (!bytes) return '0B';\n      const k = 1024;\n      if (bytes < k) return bytes + 'B';\n      if (bytes < k*k) return (bytes/k).toFixed(0) + 'KB';\n      return (bytes/(k*k)).toFixed(1) + 'MB';\n    },\n    formatDate(ts) {\n      if (!ts) return '';\n      const d = new Date(ts);\n      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});\n    }\n  }\n}\n</script>\n\n<style scoped>\n  .version-history-card {\n    height: 100%;\n  }\n\n  .version-item {\n    min-height: 40px !important;\n  }\n\n  .compact-sub {\n    font-size: 0.7em !important;\n    line-height: 1.2 !important;\n  }\n\n  .active-version {\n    background-color: rgba(76, 175, 80, 0.15);\n    border-left: 2px solid #4CAF50;\n  }\n\n  .action-buttons {\n    display: flex;\n    gap: 2px;\n  }\n</style>",
+        "storeOutMessages": false,
+        "passthru": false,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 930,
+        "y": 540,
+        "wires": [
+            [
+                "version_selector"
             ]
         ]
     },
@@ -898,20 +970,6 @@
         "disabled": "false"
     },
     {
-        "id": "ui_group_ota_versions",
-        "type": "ui-group",
-        "z": "bumblebee_tab",
-        "name": "Version History (Last 5)",
-        "page": "ui_page_ota",
-        "width": "6",
-        "height": "1",
-        "order": 2,
-        "showTitle": true,
-        "className": "",
-        "visible": "true",
-        "disabled": "false"
-    },
-    {
         "id": "ui_group_ota_control",
         "type": "ui-group",
         "z": "bumblebee_tab",
@@ -924,6 +982,21 @@
         "className": "",
         "visible": "true",
         "disabled": "false"
+    },
+    {
+        "id": "ui_group_ota_versions",
+        "type": "ui-group",
+        "z": "bumblebee_tab",
+        "name": "Version History",
+        "page": "ui_page_ota",
+        "width": "6",
+        "height": "1",
+        "order": 2,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
     },
     {
         "id": "ui_page",
@@ -975,7 +1048,7 @@
         }
     },
     {
-        "id": "36c673733d47a41e",
+        "id": "d42c7a5e463b8889",
         "type": "global-config",
         "env": [],
         "modules": {

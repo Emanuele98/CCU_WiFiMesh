@@ -28,8 +28,7 @@ tlix47HIKl0FuucY3e5L8EVOkBElQRsNEcJYoragJkxSNRcxFbG+3qIwVw/xqobt\
 FCXWF09idcIAbIR//oI1dmqyKZoxiMq3UuHDvR6E+TzlZVmB+tER\n" \
 "-----END CERTIFICATE-----\n";
 
-/* MQTT client handle */
-extern esp_mqtt_client_handle_t mqtt_client;
+/* MQTT variables */
 static bool mqtt_connected = false;
 static bool mqtt_initialized = false;
 
@@ -93,6 +92,13 @@ static void handle_ota_command(const char *data, int data_len)
     } else {
         ESP_LOGW(TAG, "No SHA256 in OTA command - update will proceed without verification");
     }
+
+    //TODO:
+    // Let childs download first
+    // Send MAC - SHA256 to one child per time (from peer struct)
+    // wait for child to confirm/timeout
+    // repeat for all childs
+    // Master download at last
     
     // Start OTA update
     esp_err_t err = ota_start_update(sha256);
