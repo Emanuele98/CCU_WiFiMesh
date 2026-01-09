@@ -78,16 +78,16 @@ services:
     restart: unless-stopped
 
   # ===============================================
-  # NODE-RED - Real-time Dashboard + OTA Server
+  # NODE-RED - Real-time Dashboard
   # ===============================================
   nodered:
     image: nodered/node-red:latest
     container_name: bumblebee-nodered
     ports:
-      - "1880:1880"      # HTTP (dashboard + OTA endpoints)
+      - "1880:1880"
     volumes:
       - nodered_data:/data
-      - nodered_ota:/data/ota  
+      - ota_firmware:/data/ota    # Shared with nginx
       - ./nodered/settings.js:/data/settings.js:ro
     environment:
       - TZ=Europe/Rome
@@ -104,8 +104,46 @@ services:
     restart: unless-stopped
     command: >
       sh -c "mkdir -p /data/ota/versions && 
+             chown -R node-red:node-red /data/ota &&
              chmod -R 755 /data/ota &&
              npm start -- --userDir /data"
+
+  # ===============================================
+  # NGINX - Static File Server for OTA Firmware
+  # ===============================================
+  # Purpose: Serve firmware.bin to multiple ESP32 nodes concurrently
+  # 
+  # Why nginx instead of Node-RED HTTP endpoint:
+  # - Optimized for concurrent static file serving (sendfile)
+  # - Minimal memory footprint per connection
+  # - Handles 100+ concurrent downloads efficiently
+  # - No impact on Node-RED dashboard performance
+  #
+  # Endpoints:
+  # - GET /health              - Health check (no auth)
+  # - GET /ota/firmware.bin    - Firmware download (Basic Auth)
+  # - GET /ota/metadata.json   - Firmware metadata (Basic Auth)
+  #
+  nginx:
+    image: nginx:alpine
+    container_name: bumblebee-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ota_firmware:/usr/share/nginx/html/ota:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    depends_on:
+      - nodered
+    networks:
+      bumblebee-network:
+        ipv4_address: 172.20.0.6
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 # ===============================================
 # NETWORKS
@@ -131,5 +169,5 @@ volumes:
     driver: local
   nodered_data:
     driver: local
-  nodered_ota: 
+  ota_firmware:    # Shared between Node-RED (write) and nginx (read)
     driver: local

@@ -1,413 +1,328 @@
-# 🐝 Bumblebee Monitoring Dashboard
+# 🐝 BUMBLEBEE MONITORING DASHBOARD
 
-## Software Stack: Mosquitto → Telegraf → InfluxDB → Node-RED
+## Complete Software Stack: Mosquitto → Telegraf → InfluxDB → Node-RED → nginx
 
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![MQTT](https://img.shields.io/badge/MQTT-TLS--Secured-red)](https://mosquitto.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.0-orange)](https://github.com/yourusername/bumblebee-mesh)
+[![OTA](https://img.shields.io/badge/OTA-nginx--Served-green)](https://nginx.org/)
 
----
-
-## 🎯 Overview
-
-The Bumblebee Dashboard provides real-time monitoring and management of the wireless power transfer mesh network. It consists of four Docker containers working together to collect, store, and visualize telemetry data from ESP32 nodes.
-
-### Live Dashboard
-
-**URL:** [http://15.188.29.195:1880/dashboard/bumblebee](http://15.188.29.195:1880/dashboard/bumblebee)
-
----
-
-## 🏗️ Architecture
+## 🏗️ System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Docker Compose Stack                         │
-│                                                                      │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────┐  │
-│  │  Mosquitto  │───>│  Telegraf   │───>│       InfluxDB          │  │
-│  │   (MQTT)    │    │  (Bridge)   │    │    (Time-Series DB)     │  │
-│  │  :8883 TLS  │    │             │    │        :8086            │  │
-│  └──────┬──────┘    └─────────────┘    └─────────────────────────┘  │
-│         │                                                            │
-│         │ Subscribe                                                  │
-│         ▼                                                            │
-│  ┌─────────────────────────────────────────────────────────────────┐│
-│  │                        Node-RED                                  ││
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ ││
-│  │  │  Dashboard  │  │     OTA     │  │    MQTT Integration     │ ││
-│  │  │  Real-time  │  │  Management │  │  Subscribe & Publish    │ ││
-│  │  │  Gauges     │  │  Firmware   │  │                         │ ││
-│  │  └─────────────┘  └─────────────┘  └─────────────────────────┘ ││
-│  │                        :1880                                     ││
-│  └─────────────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────────────┘
-                                │
-                                │ MQTT/TLS
-                                ▼
-                    ┌─────────────────────┐
-                    │   ESP32 Mesh        │
-                    │   ROOT → Children   │
-                    └─────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLOUD (AWS Lightsail)                          │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Docker Compose Stack                           │  │
+│  │                                                                       │  │
+│  │   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐               │  │
+│  │   │  Mosquitto  │───▶│  Telegraf   │───▶│  InfluxDB   │              │  │
+│  │   │  (MQTT)     │    │  (Bridge)   │    │  (Database) │               │  │
+│  │   │  :8883 TLS  │    │             │    │  :8086      │               │  │
+│  │   └──────┬──────┘    └─────────────┘    └─────────────┘               │  │
+│  │          │                                                            │  │
+│  │          │ MQTT                                                       │  │
+│  │          ▼                                                            │  │
+│  │   ┌─────────────┐         ┌─────────────┐                             │  │
+│  │   │  Node-RED   │────────▶│   nginx     │                            │  │
+│  │   │ (Dashboard) │ upload  │ (OTA Files) │                             │  │
+│  │   │  :1880      │         │  :8080      │                             │  │
+│  │   └─────────────┘         └──────┬──────┘                             │  │
+│  │                                  │                                    │  │
+│  │                    [ota_firmware volume]                              │  │
+│  │                    (shared between services)                          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ MQTT :8883 (TLS)
+                                      │ HTTP :8080 (OTA)
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              LOCAL NETWORK                                  │
+│                                                                             │
+│   ┌─────────┐                                                               │
+│   │ Router  │◀─── WiFi ───────────────────────────────────────────┐        │
+│   └────┬────┘                                                     │         │
+│        │                                                          │         │
+│        │ WiFi-Mesh-LITE                                           │         │
+│        ▼                                                          │         │
+│   ┌─────────┐      ┌─────────┐      ┌─────────┐                   │         │ 
+│   │ MASTER  │◀────▶│   TX2   │◀────▶│   TX3   │ ...             │         │
+│   │  TX1    │      │         │      │         │                   │         │
+│   └────┬────┘      └────┬────┘      └────┬────┘                   │         │
+│        │                │                │                        │         │
+│        │ ESP-NOW        │ ESP-NOW        │ ESP-NOW                │         │
+│        ▼                ▼                ▼                        │         │
+│   ┌─────────┐      ┌─────────┐      ┌─────────┐              ┌────┴────┐    │
+│   │   RX1   │      │   RX2   │      │   RX3   │              │ OTA DL  │    │
+│   └─────────┘      └─────────┘      └─────────┘              │ (all TX)│    │
+│                                                              └─────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+## 🔄 OTA Update Flow
 
-## 📦 Components
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PARALLEL OTA UPDATE FLOW                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     │
+│  │   UPLOAD     │     │   TRIGGER    │     │   DOWNLOAD   │     │
+│  │              │     │              │     │   (Parallel) │     │
+│  │  Dashboard   │────▶│  MQTT Pub    │────▶│  All nodes   │    │
+│  │  /ota/upload │     │  ota/start   │     │  from nginx  │     │
+│  └──────────────┘     └──────────────┘     └──────────────┘     │
+│         │                    │                    │             │
+│         ▼                    ▼                    ▼             │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     │
+│  │  Node-RED    │     │  ESP32 Nodes │     │    nginx     │     │
+│  │  saves to    │     │  receive     │     │   serves     │     │
+│  │  /data/ota/  │     │  trigger     │     │  firmware    │     │
+│  └──────────────┘     └──────────────┘     └──────────────┘     │
+│         │                    │                    │             │
+│         └────────────────────┼────────────────────┘             │
+│                              │                                  │
+│                              ▼                                  │
+│                    ┌──────────────────┐                         │
+│                    │  STATUS REPORT   │                         │
+│                    │                  │                         │
+│                    │  Each node pubs  │                         │
+│                    │  to MQTT topic:  │                         │
+│                    │  bumblebee/{MAC} │                         │
+│                    │  /ota/status     │                         │
+│                    └──────────────────┘                         │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-### Mosquitto (MQTT Broker)
+## 🔒 Security Features
 
-Handles all MQTT communication between ESP32 devices and the dashboard.
+- **MQTT over TLS/SSL** (Port 8883)
+- **Username/Password Authentication** for MQTT
+- **Basic Auth** for nginx OTA endpoint
+- **Self-signed certificates** (Development) / Let's Encrypt (Production)
+- **Internal Docker network** isolation
 
-| Port | Protocol | Purpose |
-|------|----------|---------|
-| 8883 | MQTTS | External secure connections (ESP32) |
-| 1883 | MQTT | Internal Docker network only |
-| 9001 | WSS | WebSocket over TLS |
+## 📋 Quick Start
 
-**Features:**
-- TLS 1.2 encryption
-- Username/password authentication
-- Persistent sessions
-- Message logging
+### AWS Lightsail Deployment
 
-### Telegraf (Data Bridge)
+📘 Production deployment with full security: [AWS-DEPLOYMENT.md](AWS-DEPLOYMENT.md)
 
-Subscribes to MQTT topics and writes data to InfluxDB.
+## 🐳 Docker Services
 
-**Subscribed Topics:**
-- `bumblebee/+/dynamic` - Telemetry data
-- `bumblebee/+/alerts` - Safety alerts
-
-**Output:** InfluxDB v2 with token authentication
-
-### InfluxDB (Time-Series Database)
-
-Stores all historical telemetry and alert data.
-
-| Setting | Value |
-|---------|-------|
-| Organization | bumblebee |
-| Bucket | sensor_data |
-| Retention | Unlimited |
-
-**Access:** http://15.188.29.195:8086
-
-### Node-RED (Dashboard & OTA)
-
-Provides the web interface for monitoring and firmware management.
-
-**Features:**
-- Real-time telemetry visualization
-- Multi-unit status display
-- OTA firmware upload and management
-- MQTT topic monitoring
-- Global control commands
-
----
+| Service | Container | Port | IP Address | Purpose |
+|---------|-----------|------|------------|---------|
+| Mosquitto | bumblebee-mosquitto | 8883 (TLS) | 172.20.0.2 | MQTT Broker |
+| InfluxDB | bumblebee-influxdb | 8086 | 172.20.0.3 | Time-series DB |
+| Telegraf | bumblebee-telegraf | - | 172.20.0.4 | MQTT→InfluxDB bridge |
+| Node-RED | bumblebee-nodered | 1880 | 172.20.0.5 | Dashboard + OTA Upload |
+| nginx | bumblebee-nginx | 8080 | 172.20.0.6 | OTA Firmware Server |
 
 ## 📡 MQTT Topics
 
 ### Published by ESP32
-
-| Topic | Description | Frequency |
-|-------|-------------|-----------|
-| `bumblebee/{unit_id}/dynamic` | Telemetry (voltage, current, temp) | 30s or on-change |
-| `bumblebee/{unit_id}/alerts` | Safety alerts | Immediate |
-| `bumblebee/{unit_id}/ota/status` | OTA progress updates | During OTA |
+| Topic | Purpose |
+|-------|---------|
+| `bumblebee/{unit_id}/dynamic` | Real-time sensor data |
+| `bumblebee/{unit_id}/alerts` | Alert conditions |
+| `bumblebee/{MAC}/ota/status` | OTA update progress |
 
 ### Subscribed by ESP32
+| Topic | Purpose |
+|-------|---------|
+| `bumblebee/control` | Master ON/OFF control (0 or 1) |
+| `bumblebee/ota/start` | OTA update trigger |
 
-| Topic | Description | Payload |
-|-------|-------------|---------|
-| `bumblebee/control` | Global ON/OFF | `0` or `1` |
-| `bumblebee/ota/start` | OTA trigger | `{"sha256":"..."}` |
-
-### Example Payloads
-
-**Dynamic Telemetry:**
+### OTA Trigger Payload
 ```json
 {
-  "unit_id": 1,
-  "tx": {
-    "mac": "AA:BB:CC:DD:EE:FF",
-    "id": 1,
-    "status": 2,
-    "voltage": 48.5,
-    "current": 1.85,
-    "temp1": 35.2,
-    "temp2": 33.8
-  },
-  "rx": {
-    "mac": "11:22:33:44:55:66",
-    "id": 101,
-    "status": 1,
-    "voltage": 52.3,
-    "current": 1.75,
-    "temp1": 38.5,
-    "temp2": 37.2
-  }
+  "sha256": "abc123...",
+  "version": "v0.0.4",
+  "size": 1234567,
+  "url": "http://15.188.29.195:8080/ota/firmware.bin"
 }
 ```
 
-**OTA Command:**
+### OTA Status Payload
 ```json
 {
-  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  "status": "downloading",
+  "progress": 45,
+  "version": "v0.0.4"
 }
 ```
-
----
-
-## 🔄 OTA Firmware Updates
-
-The dashboard includes an OTA management page for uploading and deploying firmware updates.
-
-### OTA Flow
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    OTA Management Page                       │
-│                                                              │
-│  1. Upload firmware.bin (drag & drop)                       │
-│  2. SHA256 calculated automatically                          │
-│  3. Stored in /data/ota/firmware.bin                        │
-│  4. Click "Trigger OTA"                                      │
-│  5. MQTT publishes to bumblebee/ota/start                   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    ESP32 ROOT Node                           │
-│                                                              │
-│  1. Receives MQTT trigger                                   │
-│  2. Downloads: GET /ota/firmware.bin                        │
-│  3. HTTP Basic Auth: admin:bumblebee2025                    │
-│  4. Verifies SHA256                                         │
-│  5. Flashes to OTA partition                                │
-│  6. Reboots                                                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Current Limitations
-
-- **ROOT node only**: Currently, only the mesh ROOT node can receive OTA updates
-- **Sequential download**: Single connection to Node-RED HTTP endpoint
-
-### Future Enhancement
-
-nginx integration will enable concurrent firmware downloads for all mesh nodes simultaneously.
-
----
-
-## 🔐 Security
-
-### Authentication
-
-| Service | Username | Password |
-|---------|----------|----------|
-| Node-RED Editor | admin | bumblebee2025 |
-| OTA HTTP Endpoint | admin | bumblebee2025 |
-| MQTT Broker | bumblebee | bumblebee2025 |
-| InfluxDB | admin | bumblebee2025 |
-
-### TLS/SSL
-
-- MQTT: Port 8883 with TLS 1.2
-- Self-signed certificates (development)
-- Let's Encrypt supported (production)
-
-### Node-RED Security
-
-The `settings.js` file configures:
-- Admin authentication (bcrypt hashed passwords)
-- HTTP node authentication for OTA endpoints
-- Credential encryption
-
-**Generate bcrypt hash:**
-```bash
-node -e "console.log(require('bcryptjs').hashSync('your_password', 8))"
-```
-
----
-
-## 🚀 Quick Start
-
-### Local Development
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/bumblebee-mesh.git
-cd bumblebee-mesh/Dashboard
-
-# Generate certificates
-cd mosquitto/certs
-openssl req -new -x509 -days 365 -extensions v3_ca \
-  -keyout ca.key -out ca.crt \
-  -subj "/CN=Bumblebee-CA"
-openssl genrsa -out server.key 2048
-openssl req -new -key server.key -out server.csr -subj "/CN=localhost"
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out server.crt -days 365
-cd ../..
-
-# Start services
-docker compose up -d
-
-# Create MQTT users
-docker compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd bumblebee
-docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd telegraf
-docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd nodered
-
-# Access dashboard
-open http://localhost:1880/dashboard/bumblebee
-```
-
-### Production Deployment
-
-See [AWS-DEPLOYMENT.md](AWS-DEPLOYMENT.md) for complete instructions.
-
----
-
-## 🛠️ Management Commands
-
-### Service Control
-
-```bash
-# Start all
-docker compose up -d
-
-# Stop all
-docker compose down
-
-# Restart specific service
-docker compose restart nodered
-
-# View logs
-docker compose logs -f
-docker compose logs -f nodered
-```
-
-### MQTT Testing
-
-```bash
-# Subscribe to all topics
-docker compose exec mosquitto mosquitto_sub \
-  -h localhost -p 1883 \
-  -u bumblebee -P bumblebee2025 \
-  -t '#' -v
-
-# Publish test message
-docker compose exec mosquitto mosquitto_pub \
-  -h localhost -p 1883 \
-  -u bumblebee -P bumblebee2025 \
-  -t 'test/topic' -m 'Hello'
-
-# Test OTA trigger
-docker compose exec mosquitto mosquitto_pub \
-  -h localhost -p 1883 \
-  -u bumblebee -P bumblebee2025 \
-  -t 'bumblebee/ota/start' \
-  -m '{"sha256":"abc123..."}'
-```
-
-### OTA Directory Management
-
-```bash
-# Create OTA directories
-docker exec -u 0 bumblebee-nodered mkdir -p /data/ota/versions
-docker exec -u 0 bumblebee-nodered chown -R node-red:node-red /data/ota
-
-# List firmware files
-docker exec bumblebee-nodered ls -la /data/ota/
-
-# Test firmware endpoint
-curl -u admin:bumblebee2025 http://localhost:1880/ota/firmware.bin -o test.bin
-```
-
----
-
-## 📁 Files Included
-
-| File | Description |
-|------|-------------|
-| `docker-compose.yml` | Service orchestration |
-| `mosquitto/config/mosquitto.conf` | MQTT broker configuration |
-| `mosquitto/certs/` | TLS certificates |
-| `telegraf/telegraf.conf` | Data bridge configuration |
-| `nodered/settings.js` | Node-RED configuration |
-| `AWS-DEPLOYMENT.md` | Production deployment guide |
-| `README.md` | This file |
-
----
 
 ## 🖥️ Service URLs
-
-### Local Development
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Dashboard | http://localhost:1880/dashboard/bumblebee | — |
-| Node-RED | http://localhost:1880 | admin / bumblebee2025 |
-| InfluxDB | http://localhost:8086 | admin / bumblebee2025 |
-| OTA Firmware | http://localhost:1880/ota/firmware.bin | admin / bumblebee2025 |
 
 ### Production (AWS)
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Dashboard | http://15.188.29.195:1880/dashboard/bumblebee | — |
+| Dashboard | http://15.188.29.195:1880/dashboard/bumblebee | admin / bumblebee2025 |
 | Node-RED | http://15.188.29.195:1880 | admin / bumblebee2025 |
+| OTA Page | http://15.188.29.195:1880/dashboard/ota | admin / bumblebee2025 |
+| OTA Firmware | http://15.188.29.195:8080/ota/firmware.bin | admin / bumblebee2025 |
 | InfluxDB | http://15.188.29.195:8086 | admin / bumblebee2025 |
-| MQTT (TLS) | mqtts://15.188.29.195:8883 | bumblebee / bumblebee2025 |
+| MQTTS | mqtts://15.188.29.195:8883 | bumblebee / bumblebee2025 |
 
----
+## 📋 Files Included
+
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Service orchestration (5 services) |
+| `mosquitto/config/mosquitto.conf` | MQTT broker configuration |
+| `mosquitto/config/passwd` | MQTT user credentials |
+| `mosquitto/certs/` | SSL/TLS certificates |
+| `telegraf/telegraf.conf` | Data bridge configuration |
+| `nginx/nginx.conf` | OTA server configuration |
+| `nginx/.htpasswd` | nginx Basic Auth credentials |
+| `nodered/settings.js` | Node-RED settings |
+| `bumblebee-flowfuse-dashboard.json` | Dashboard flow |
+| `start-bumblebee.bat` | Windows management script |
+
+## 🛠️ Management Commands
+
+### Start Services
+```bash
+docker compose up -d
+```
+
+### Stop Services
+```bash
+docker compose down
+```
+
+### View Logs
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f mosquitto
+docker compose logs -f nginx
+docker compose logs -f nodered
+```
+
+### Fix Node-RED OTA Permissions
+⚠️ Run this after starting the stack for the first time:
+```bash
+docker exec -u 0 bumblebee-nodered sh -c "mkdir -p /data/ota/versions && chown -R node-red:node-red /data/ota && chmod -R 755 /data/ota"
+```
+
+### Test OTA Server
+```bash
+# Health check (no auth)
+curl http://localhost:8080/health
+
+# Download firmware (with auth)
+curl -u admin:bumblebee2025 http://localhost:8080/ota/firmware.bin -o test.bin
+```
+
+### Test MQTT Connection
+```bash
+# With authentication
+docker compose exec mosquitto mosquitto_pub \
+  -h localhost -p 1883 \
+  -u bumblebee -P bumblebee2025 \
+  -t test/topic -m "Hello Secure MQTT"
+```
+
+## 🔐 Security Configuration
+
+### Generate Self-Signed Certificates
+
+```bash
+mkdir -p mosquitto/certs
+cd mosquitto/certs
+
+# Generate CA certificate
+openssl req -new -x509 -days 365 -extensions v3_ca -keyout ca.key -out ca.crt \
+  -subj "/C=PT/ST=Braga/L=Barcelos/O=Bumblebee/OU=IoT/CN=Bumblebee-CA"
+
+# Generate server certificate
+openssl genrsa -out server.key 2048
+openssl req -new -key server.key -out server.csr \
+  -subj "/C=PT/ST=Braga/L=Barcelos/O=Bumblebee/OU=IoT/CN=localhost"
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -out server.crt -days 365
+rm server.csr
+```
+
+### Create nginx Password File
+
+```bash
+# Install htpasswd utility
+sudo apt install -y apache2-utils  # Linux
+# or: brew install httpd           # macOS
+
+# Create password file
+htpasswd -cb nginx/.htpasswd admin bumblebee2025
+```
+
+### Create MQTT Password File
+
+```bash
+docker compose up -d mosquitto
+
+docker compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd bumblebee
+docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd telegraf
+docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd nodered
+```
 
 ## 🐛 Troubleshooting
 
-### MQTT Connection Issues
+### Node-RED: Permission Denied on /data/ota
 
 ```bash
-# Test TLS connection
+docker exec -u 0 bumblebee-nodered sh -c "mkdir -p /data/ota/versions && chown -R node-red:node-red /data/ota && chmod -R 755 /data/ota"
+```
+
+### nginx: 403 Forbidden
+
+```bash
+# Check password file exists
+cat nginx/.htpasswd
+
+# Recreate if needed
+htpasswd -cb nginx/.htpasswd admin bumblebee2025
+docker compose restart nginx
+```
+
+### ESP32: Can't Download Firmware
+
+1. Check nginx is running: `docker compose ps`
+2. Test URL: `curl -u admin:bumblebee2025 http://YOUR_IP:8080/ota/firmware.bin`
+3. Check firewall allows port 8080
+4. Verify ESP32 has correct URL and Basic Auth credentials
+
+### TLS Handshake Failed
+
+```bash
+# Test certificate
 openssl s_client -connect localhost:8883 -CAfile mosquitto/certs/ca.crt
 
 # Check certificate dates
 openssl x509 -in mosquitto/certs/server.crt -noout -dates
-
-# View Mosquitto logs
-docker compose logs -f mosquitto
 ```
 
-### Node-RED Issues
+## 🎯 Production Checklist
 
-```bash
-# Check Node-RED logs
-docker compose logs -f nodered
+- [ ] Changed all default passwords
+- [ ] Configured firewall (ports 22, 1880, 8080, 8086, 8883)
+- [ ] Enabled TLS on MQTT
+- [ ] Set up Basic Auth on nginx
+- [ ] Fixed Node-RED OTA permissions
+- [ ] Tested firmware upload and download
+- [ ] Verified ESP32 OTA update works
+- [ ] Set up automated backups
+- [ ] Configured log rotation
 
-# Restart Node-RED
-docker compose restart nodered
+## 📞 Related Documentation
 
-# Access container shell
-docker exec -it bumblebee-nodered /bin/bash
-```
-
-### ESP32 Connection Issues
-
-1. Verify CA certificate is embedded in firmware
-2. Check ESP32 has ~40KB heap for TLS
-3. Verify username/password matches
-4. Check firewall allows ESP32 IP range
+- [AWS-DEPLOYMENT.md](AWS-DEPLOYMENT.md) - Full AWS deployment guide
+- [../README-FWextensive.md](../README-FWextensive.md) - Firmware documentation
 
 ---
 
-## 📚 Additional Resources
-
-- [Mosquitto Documentation](https://mosquitto.org/documentation/)
-- [Node-RED Documentation](https://nodered.org/docs/)
-- [InfluxDB Documentation](https://docs.influxdata.com/influxdb/v2/)
-- [ESP32 MQTT Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/mqtt.html)
-
----
-
-**🐝 BUMBLEBEE - Wireless Power Transfer Monitoring Dashboard**  
-**Version 0.3.0** | **January 2026**
+**🐝 BUMBLEBEE - Wireless Power Transfer Monitoring System**  
+**Dashboard Version 3.0 - With OTA Firmware Updates via nginx**

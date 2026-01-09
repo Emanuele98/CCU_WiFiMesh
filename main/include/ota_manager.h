@@ -43,7 +43,7 @@
 // ============================================================================
 
 // Node-RED on AWS Lightsail (HTTP, password-protected)
-#define OTA_FIRMWARE_URL "http://15.188.29.195:1880/ota/firmware.bin"
+#define OTA_FIRMWARE_URL "http://15.188.29.195:8080/ota/firmware.bin"
 
 // HTTP Basic Authentication
 #define OTA_HTTP_USERNAME "admin"
