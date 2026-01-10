@@ -493,6 +493,12 @@ static void handle_peer_dynamic(espnow_data_t* data, uint8_t* mac)
     self_dynamic_payload.RX.temp1 = data->field_3;
     self_dynamic_payload.RX.temp2 = data->field_4;
 
+    // print values 
+    ESP_LOGI(TAG, "Received dynamic data: Voltage: %.2f V - RX Status: %d RX Alert flags: %d",
+             self_dynamic_payload.RX.voltage,
+             self_dynamic_payload.RX.rx_status, 
+             self_alert_payload.RX.RX_all_flags);
+
     if (!self_alert_payload.RX.RX_all_flags)
     {   
         //populate mesh lite dynamic payload

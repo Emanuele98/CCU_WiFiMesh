@@ -38,7 +38,7 @@
 
 /* MISALIGNMENT LIMITS */
 #define SCOOTER_LEFT_LIMIT                  10
-#define MISALIGNED_LIMIT                    10
+#define MISALIGNED_LIMIT                    30
 
 /* ALERTS LIMITS TX */
 #define OVERCURRENT_TX                      2.2
